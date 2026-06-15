@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Procedural Prototyping</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <span id="title">Procedural Prototyping</span>
+    <span id="subtitle"></span>
+    <select id="artwork-select" title="Artwork"></select>
+  </header>
+
+  <main>
+    <aside id="panel"></aside>
+    <section id="stage">
+      <div id="canvas-wrap"><div id="canvas"></div></div>
+      <div id="error" hidden></div>
+    </section>
+  </main>
+
+  <footer>
+    <label>seed <input id="seed" type="number" value="42" /></label>
+    <button id="randomize">⚡ randomize</button>
+    <button id="rerender">↻ re-render</button>
+    <span id="timing">– ms</span>
+    <button id="reset-zoom">⊙ reset zoom</button>
+    <span id="zoom">100%</span>
+    <span class="spacer"></span>
+    <button id="save-draft">↓ save draft</button>
+    <button id="save-keeper">★ save keeper</button>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
