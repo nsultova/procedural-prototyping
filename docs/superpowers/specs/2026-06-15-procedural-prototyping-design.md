@@ -237,7 +237,15 @@ determinism / bounds / spec tests the moment its folder is added.
 
 ## First implementation target
 
-Port `geological_strata.py` to the new structure (`artworks/geological/core.py` +
-`params.py`) as the proving artwork: confirms the pure-core split, the generic
-server/UI, slider auto-generation, export parity, and the reproducibility header
-end to end.
+Port **two** existing pieces to the new structure as proving artworks, chosen to
+exercise different primitives:
+
+- `geological_strata.py` → `artworks/geological/` — open polylines (displaced
+  scanlines).
+- `water_droplets.py` → `artworks/water_droplets/` — closed polylines
+  (concentric distorted rings).
+
+Porting two different techniques in the first pass confirms not just that the
+pipeline works once, but that the pure-core split, generic server/UI, slider
+auto-generation, the artwork switcher, export parity, and the reproducibility
+header all **generalize across techniques** — end to end.
