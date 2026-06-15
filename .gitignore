@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+output/drafts/*
+output/keepers/*
+!output/drafts/.gitkeep
+!output/keepers/.gitkeep
