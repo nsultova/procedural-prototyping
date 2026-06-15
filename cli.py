@@ -69,8 +69,12 @@ def cmd_reproduce(registry: Registry, args) -> None:
     meta = parse_metadata_header(svg_in)
     artwork = meta.pop("artwork")
     seed = int(meta.pop("seed"))
+    # Canvas size is embedded in the recipe; fall back to flags for older files
+    # that predate canvas metadata.
+    width = float(meta.pop("canvas_width", args.width))
+    height = float(meta.pop("canvas_height", args.height))
     params = coerce_params(registry, artwork, meta)
-    canvas = Canvas(width=args.width, height=args.height)
+    canvas = Canvas(width=width, height=height)
     paths = registry.render_paths(artwork, params, seed=seed, canvas=canvas)
     merged = registry.merge_params(artwork, params)
     svg_out = render_print_optimized(canvas, paths, artwork=artwork,
@@ -102,8 +106,12 @@ def main(argv=None) -> int:
     p_repro = sub.add_parser("reproduce")
     p_repro.add_argument("file")
     p_repro.add_argument("--out", default="output/keepers/reproduced.svg")
-    p_repro.add_argument("--width", type=float, default=200)
-    p_repro.add_argument("--height", type=float, default=200)
+    # Only used as a fallback for SVGs exported before canvas size was embedded;
+    # current files carry their own canvas dimensions in the metadata header.
+    p_repro.add_argument("--width", type=float, default=200,
+                         help="canvas width fallback (mm) if not in the SVG header")
+    p_repro.add_argument("--height", type=float, default=200,
+                         help="canvas height fallback (mm) if not in the SVG header")
     p_repro.set_defaults(func=cmd_reproduce)
 
     args = parser.parse_args(argv)

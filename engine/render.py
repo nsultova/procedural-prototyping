@@ -68,8 +68,15 @@ def render_svg(
     return "\n".join(out)
 
 
-def _metadata_header(artwork: str, seed: int, params: dict) -> str:
-    parts = [f"artwork: {artwork}", f"seed: {seed}"]
+def _metadata_header(artwork: str, seed: int, params: dict, canvas: Canvas) -> str:
+    # Canvas dimensions are part of the recipe: geometry is canvas-size-dependent,
+    # so reproduce must restore them too.
+    parts = [
+        f"artwork: {artwork}",
+        f"seed: {seed}",
+        f"canvas_width: {canvas.width}",
+        f"canvas_height: {canvas.height}",
+    ]
     for key, value in params.items():
         parts.append(f"{key}: {value}")
     return " | ".join(parts)
@@ -89,5 +96,5 @@ def render_print_optimized(
         paths,
         default_width=default_width,
         background="white",
-        metadata_header=_metadata_header(artwork, seed, params),
+        metadata_header=_metadata_header(artwork, seed, params, canvas),
     )

@@ -46,6 +46,18 @@ def test_empty_path_is_skipped():
     assert "<polygon" not in svg
 
 
+def test_print_optimized_embeds_canvas_size():
+    c = Canvas(width=297, height=420)
+    svg = render_print_optimized(
+        c, [Path(points=[(0, 0), (1, 1)])],
+        artwork="demo", seed=1, params={},
+    )
+    m = re.search(r"<!--\s*(.*?)\s*-->", svg)
+    header = m.group(1)
+    assert "canvas_width: 297" in header
+    assert "canvas_height: 420" in header
+
+
 def test_metadata_double_dash_is_neutralized():
     c = Canvas(width=10, height=10)
     svg = render_print_optimized(

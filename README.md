@@ -26,8 +26,9 @@ python -m venv .venv
 In the browser: pick an artwork from the dropdown, drag sliders to explore
 (the canvas re-renders live), set/​randomize the seed, pan (drag) and zoom
 (scroll). **Save draft** and **Save keeper** download a plotter-ready SVG whose
-embedded comment records the artwork, seed, and every parameter — so any saved
-file is a complete, re-runnable recipe.
+embedded comment records the artwork, seed, canvas size, and every parameter —
+so any saved file is a complete, re-runnable recipe (`cli.py reproduce` restores
+all of it, including the canvas dimensions, automatically).
 
 ## Add an artwork
 

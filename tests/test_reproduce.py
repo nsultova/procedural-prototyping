@@ -36,28 +36,35 @@ def test_reproduce_is_deterministic():
 
 
 def test_full_roundtrip_from_exported_svg(tmp_path):
-    # End-to-end: export an SVG, then reconstruct params from its header and
-    # re-render — the geometry must match the original bit-for-bit.
+    # End-to-end: export an SVG on a NON-square canvas, then reconstruct
+    # everything (artwork, seed, canvas size, params) purely from its header and
+    # re-render — the geometry must match the original bit-for-bit. The
+    # non-square canvas proves canvas dimensions round-trip (geometry is
+    # canvas-size-dependent).
     reg = Registry()
-    canvas = Canvas(width=200, height=200)
+    original_canvas = Canvas(width=297, height=210)
     seed = 77
     original_params = reg.merge_params(
         "geological", {"num_lines": 12, "x_resolution": 40})
     original_paths = reg.render_paths(
-        "geological", original_params, seed=seed, canvas=canvas)
-    svg = render_print_optimized(canvas, original_paths, artwork="geological",
-                                 seed=seed, params=original_params)
+        "geological", original_params, seed=seed, canvas=original_canvas)
+    svg = render_print_optimized(original_canvas, original_paths,
+                                 artwork="geological", seed=seed,
+                                 params=original_params)
     svg_file = tmp_path / "exported.svg"
     svg_file.write_text(svg)
 
-    # Reconstruct purely from the file's metadata header.
+    # Reconstruct purely from the file's metadata header — no prior knowledge.
     meta = parse_metadata_header(svg_file.read_text())
     artwork = meta.pop("artwork")
     recovered_seed = int(meta.pop("seed"))
+    recovered_canvas = Canvas(width=float(meta.pop("canvas_width")),
+                              height=float(meta.pop("canvas_height")))
     recovered_params = coerce_params(reg, artwork, meta)
     recovered_paths = reg.render_paths(
-        artwork, recovered_params, seed=recovered_seed, canvas=canvas)
+        artwork, recovered_params, seed=recovered_seed, canvas=recovered_canvas)
 
     assert artwork == "geological"
     assert recovered_seed == seed
+    assert (recovered_canvas.width, recovered_canvas.height) == (297, 210)
     assert [p.points for p in recovered_paths] == [p.points for p in original_paths]
