@@ -26,6 +26,14 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     min_w = p["min_width"]
     max_w = p["max_width"]
     w_exp = max(p["width_exponent"], 1e-6)
+    fan_density = int(p["fan_density"])
+    fan_length = p["fan_length"]
+    fan_spread = p["fan_spread"]
+    fan_depth = int(p["fan_depth"])
+    distortion = p["distortion"]
+    distortion_scale = p["distortion_scale"]
+    bubble_density = int(p["bubble_density"])
+    bubble_size = p["bubble_size"]
 
     # Root in the lower-left corner; growth heads toward the top-right frontier.
     root = (0.05 * W, 0.95 * H)
@@ -160,4 +168,76 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
             poly.append(nodes[cur])
         if len(poly) >= 2:
             paths.append(Path(points=poly, width=width_of(c)))
+
+    # --- optional fan-fronts: fuzzy tufts sprouting outward from each tip ---
+    # All extra passes are skipped (no rng consumed) when their gate is 0, so
+    # the baseline output is unchanged.
+    if fan_density > 0:
+        FAN_CAP = 12000
+        made = 0
+        for li in range(1, n):
+            if children[li]:
+                continue                       # only leaves (growth tips) bloom
+            lx, ly = nodes[li]
+            px, py = nodes[parents[li]]
+            dx, dy = lx - px, ly - py
+            dlen = math.hypot(dx, dy) or 1.0
+            seeds = [(lx, ly, dx / dlen, dy / dlen, fan_length, fan_depth)]
+            while seeds and made < FAN_CAP:
+                sx, sy, ux, uy, length, depth = seeds.pop()
+                twigs = fan_density if depth == fan_depth else 2
+                for _t in range(twigs):
+                    a = (rng.random() - 0.5) * fan_spread * math.pi
+                    ca, sa = math.cos(a), math.sin(a)
+                    tx, ty = ux * ca - uy * sa, ux * sa + uy * ca
+                    L = length * (0.6 + 0.4 * rng.random())
+                    mx = min(max(sx + tx * L * 0.5, 0.0), W)
+                    my = min(max(sy + ty * L * 0.5, 0.0), H)
+                    ex = min(max(sx + tx * L, 0.0), W)
+                    ey = min(max(sy + ty * L, 0.0), H)
+                    paths.append(Path(points=[(sx, sy), (mx, my), (ex, ey)], width=min_w))
+                    made += 1
+                    if depth > 1 and made < FAN_CAP:
+                        seeds.append((ex, ey, tx, ty, length * 0.6, depth - 1))
+                    if made >= FAN_CAP:
+                        break
+
+    # --- optional bubbles: little vacuole rings scattered on the network ---
+    if bubble_density > 0 and n > 1:
+        for _ in range(bubble_density):
+            idx = 1 + int(rng.random() * (n - 1))
+            bx, by = nodes[idx]
+            r = bubble_size * (0.5 + rng.random())
+            ring = [(bx + r * math.cos(2 * math.pi * k / 16),
+                     by + r * math.sin(2 * math.pi * k / 16)) for k in range(16)]
+            paths.append(Path(points=ring, closed=True, width=min_w))
+
+    # --- optional distortion: perpendicular wobble on every polyline ---
+    # Interior points only (endpoints stay put, so branch connections hold).
+    if distortion > 0:
+        freq = distortion_scale * 0.05
+        wobbled = []
+        for path in paths:
+            pts = path.points
+            if len(pts) < 3:
+                wobbled.append(path)
+                continue
+            phase = rng.random() * 2.0 * math.pi
+            s = 0.0
+            out = [pts[0]]
+            for i in range(1, len(pts) - 1):
+                x0, y0 = pts[i - 1]
+                x1, y1 = pts[i]
+                x2, y2 = pts[i + 1]
+                s += math.hypot(x1 - x0, y1 - y0)
+                tx, ty = x2 - x0, y2 - y0
+                tlen = math.hypot(tx, ty) or 1.0
+                nx, ny = -ty / tlen, tx / tlen
+                off = distortion * math.sin(freq * s + phase)
+                out.append((min(max(x1 + nx * off, 0.0), W),
+                            min(max(y1 + ny * off, 0.0), H)))
+            out.append(pts[-1])
+            wobbled.append(Path(points=out, closed=path.closed, width=path.width))
+        paths = wobbled
+
     return paths

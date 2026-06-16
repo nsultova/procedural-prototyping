@@ -53,6 +53,43 @@ def test_widths_taper_within_bounds():
     assert max(widths) <= params["max_width"] + 1e-9
 
 
+def test_baseline_passes_are_off_by_default():
+    # Default fan/bubble/distortion are neutral -> only open vein polylines.
+    canvas = Canvas(width=200, height=200)
+    paths = core.geometry(canvas, _params(), random.Random(42))
+    assert all(not p.closed for p in paths)
+
+
+def test_fans_add_tip_twigs():
+    canvas = Canvas(width=200, height=200)
+    base = core.geometry(canvas, _params(), random.Random(42))
+    fanned = core.geometry(canvas, _params(fan_density=6), random.Random(42))
+    assert len(fanned) > len(base)
+
+
+def test_bubbles_add_closed_rings():
+    canvas = Canvas(width=200, height=200)
+    base = core.geometry(canvas, _params(), random.Random(42))
+    bubbled = core.geometry(canvas, _params(bubble_density=12), random.Random(42))
+    assert sum(p.closed for p in base) == 0
+    assert sum(p.closed for p in bubbled) >= 1
+
+
+def test_distortion_changes_geometry():
+    canvas = Canvas(width=200, height=200)
+    straight = core.geometry(canvas, _params(), random.Random(42))
+    wobbly = core.geometry(canvas, _params(distortion=2.0), random.Random(42))
+    assert [p.points for p in straight] != [p.points for p in wobbly]
+
+
+def test_deterministic_with_all_extras_on():
+    canvas = Canvas(width=200, height=200)
+    kw = dict(fan_density=5, fan_depth=2, distortion=1.5, bubble_density=8)
+    a = core.geometry(canvas, _params(**kw), random.Random(5))
+    b = core.geometry(canvas, _params(**kw), random.Random(5))
+    assert [p.points for p in a] == [p.points for p in b]
+
+
 def test_preview_overrides_are_lighter():
     from engine.registry import Registry
     reg = Registry()
