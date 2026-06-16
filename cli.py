@@ -34,7 +34,7 @@ def coerce_params(registry: Registry, artwork: str, raw: dict) -> dict:
         if name not in spec:
             continue
         step = spec[name]["step"]
-        out[name] = int(round(float(value))) if float(step).is_integer() else float(value)
+        out[name] = int(round(float(value))) if step.is_integer() else float(value)
     return out
 
 
@@ -44,19 +44,19 @@ def cmd_list(registry: Registry, _args) -> None:
         print(f"{name:18} {s['title']} — {s['subtitle']}")
 
 
-def cmd_serve(_registry: Registry, args) -> None:
+def cmd_serve(registry: Registry, args) -> None:
     from server.app import create_app
     # threaded so a slow render never blocks static files or a newer request
-    create_app().run(debug=True, port=args.port, threaded=True)
+    create_app(registry).run(debug=True, port=args.port, threaded=True)
 
 
 def cmd_batch(registry: Registry, args) -> None:
     out_dir = FsPath("output/drafts")
     out_dir.mkdir(parents=True, exist_ok=True)
     canvas = Canvas(width=args.width, height=args.height)
+    params = registry.defaults(args.artwork)
     for _ in range(args.count):
         seed = random.randint(0, 2**31 - 1)
-        params = registry.defaults(args.artwork)
         paths = registry.render_paths(args.artwork, params, seed=seed, canvas=canvas)
         svg = render_print_optimized(canvas, paths, artwork=args.artwork,
                                      seed=seed, params=params)
