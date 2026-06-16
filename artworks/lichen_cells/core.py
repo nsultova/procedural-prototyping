@@ -7,7 +7,7 @@ The perimeter of the branch union erupts into fine outward-radiating spine fring
 
 import math
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.spatial import Voronoi
@@ -40,6 +40,7 @@ def _bezier_tangent(p0, p1, p2, p3, t):
 
 
 def _sample_branch(p0, p1, p2, p3, n=24):
+    assert n >= 2
     pts, tans = [], []
     for i in range(n):
         t = i / (n - 1)

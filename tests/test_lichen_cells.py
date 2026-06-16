@@ -81,13 +81,21 @@ def test_preview_params_are_lighter():
 def test_bezier_endpoints():
     from artworks.lichen_cells.core import _bezier
     p0, p1, p2, p3 = (0,0), (1,0), (1,1), (2,1)
-    assert _bezier(p0, p1, p2, p3, 0.0) == (0.0, 0.0)
-    assert _bezier(p0, p1, p2, p3, 1.0) == (2.0, 1.0)
+    x0, y0 = _bezier(p0, p1, p2, p3, 0.0)
+    x1, y1 = _bezier(p0, p1, p2, p3, 1.0)
+    assert math.isclose(x0, 0.0) and math.isclose(y0, 0.0)
+    assert math.isclose(x1, 2.0) and math.isclose(y1, 1.0)
 
 def test_sample_branch_length():
-    from artworks.lichen_cells.core import _sample_branch
-    pts, tans = _sample_branch((0,0),(1,0),(1,1),(2,1), n=10)
+    from artworks.lichen_cells.core import _bezier, _sample_branch
+    p0, p1, p2, p3 = (0,0),(1,0),(1,1),(2,1)
+    pts, tans = _sample_branch(p0, p1, p2, p3, n=10)
     assert len(pts) == 10
     assert len(tans) == 10
     for tx, ty in tans:
         assert abs(math.sqrt(tx*tx + ty*ty) - 1.0) < 1e-6
+    # first and last points must match Bézier endpoints
+    exp0 = _bezier(p0, p1, p2, p3, 0.0)
+    exp1 = _bezier(p0, p1, p2, p3, 1.0)
+    assert math.isclose(pts[0][0], exp0[0]) and math.isclose(pts[0][1], exp0[1])
+    assert math.isclose(pts[-1][0], exp1[0]) and math.isclose(pts[-1][1], exp1[1])
