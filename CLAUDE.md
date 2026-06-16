@@ -29,8 +29,9 @@ Boundaries: `engine/` = pure types/render/registry (no HTTP); `server/app.py` = 
 
 ## Dev workflow
 
-- Use the venv: `.venv/bin/python`, `.venv/bin/pytest` (system Python lacks the deps). Run the app: `.venv/bin/python cli.py serve`.
-- Keep `pytest` green; TDD where practical (artworks get determinism + in-bounds tests).
+- **Environment:** managed with [uv](https://docs.astral.sh/uv/). Run everything via `uv run` — no activation needed: `uv run pytest`, `uv run python cli.py serve`. Add deps with `uv add <pkg>` (runtime) or `uv add --dev <pkg>`. Commit `uv.lock`; never commit `.venv/`.
+- **Tests — mandatory after every refactor or completed feature:** run `uv run pytest` and confirm **zero unexpected failures** before finishing. A pre-existing `xfail` or `skip` must be explicitly noted. Keep tests in sync with the code: remove tests when you remove their feature, add tests before you ship a new one.
+- TDD where practical (artworks get determinism + in-bounds tests as a minimum).
 - Commits: branch off `master` first; **explicit `git add <paths>`, never `git add .`** (untracked `.venv/`); end messages with `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`; finish via `--no-ff` merge, then delete the branch.
 
 ## Don't regress (load-bearing — each fixed a real bug)

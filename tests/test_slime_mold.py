@@ -6,8 +6,8 @@ from artworks.slime_mold.params import PARAMS, PREVIEW
 
 def _params(**overrides):
     p = {p.name: p.default for p in PARAMS}
-    # keep the suite fast — lighter growth and frond fill than the live defaults
-    p.update(num_attractors=250, max_steps=250, frond_fill=25)
+    # keep the suite fast — lighter growth than the live defaults
+    p.update(num_attractors=250, max_steps=250)
     p.update(overrides)
     return p
 
@@ -43,10 +43,10 @@ def test_points_in_bounds():
             assert -1e-6 <= y <= canvas.height + 1e-6
 
 
-def test_bare_veins_when_fronds_and_mesh_off():
-    # frond_fill=0 and mesh_density=0 -> only the tapered vein strands remain.
+def test_bare_veins_when_mesh_off():
+    # mesh_density=0 -> only the tapered vein strands remain.
     canvas = Canvas(width=200, height=200)
-    bare = core.geometry(canvas, _params(frond_fill=0, mesh_density=0), random.Random(42))
+    bare = core.geometry(canvas, _params(mesh_density=0), random.Random(42))
     full = core.geometry(canvas, _params(), random.Random(42))
     assert len(full) > len(bare)
     # veins still taper (more than one distinct width) even when bare
@@ -55,16 +55,9 @@ def test_bare_veins_when_fronds_and_mesh_off():
 
 def test_mesh_adds_links():
     canvas = Canvas(width=200, height=200)
-    no_mesh = core.geometry(canvas, _params(mesh_density=0, frond_fill=0), random.Random(42))
-    meshed = core.geometry(canvas, _params(mesh_density=0.6, frond_fill=0), random.Random(42))
+    no_mesh = core.geometry(canvas, _params(mesh_density=0), random.Random(42))
+    meshed = core.geometry(canvas, _params(mesh_density=0.6), random.Random(42))
     assert len(meshed) > len(no_mesh)
-
-
-def test_fronds_add_strokes():
-    canvas = Canvas(width=200, height=200)
-    no_fronds = core.geometry(canvas, _params(frond_fill=0, mesh_density=0), random.Random(42))
-    fronded = core.geometry(canvas, _params(frond_fill=40, mesh_density=0), random.Random(42))
-    assert len(fronded) > len(no_fronds)
 
 
 def test_widths_within_bounds():
@@ -81,5 +74,4 @@ def test_preview_overrides_are_lighter():
     reg = Registry()
     prev = reg.preview_params("slime_mold")
     assert prev["num_attractors"] < next(p.default for p in PARAMS if p.name == "num_attractors")
-    assert prev["frond_fill"] < next(p.default for p in PARAMS if p.name == "frond_fill")
     assert "num_attractors" in PREVIEW

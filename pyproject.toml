@@ -1,3 +1,16 @@
+[project]
+name = "procedural-prototyping"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.0",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
