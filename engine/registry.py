@@ -5,7 +5,7 @@ import pkgutil
 import random
 from pathlib import Path as FsPath
 
-from engine.types import Canvas, Param, Path
+from engine.types import Canvas, Param
 
 
 def validate_params(artwork: str, params: list[Param]) -> None:
@@ -86,8 +86,9 @@ class Registry:
         _core, params_mod = self._get(name)
         return dict(getattr(params_mod, "PREVIEW", {}))
 
-    def render_paths(self, name: str, params: dict, seed: int, canvas: Canvas) -> list[Path]:
-        core_mod, _params_mod = self._get(name)
-        merged = self.merge_params(name, params)
+    def render_paths(self, name: str, params: dict, seed: int, canvas: Canvas) -> list:
+        core_mod, params_mod = self._get(name)
+        merged = {p.name: p.default for p in params_mod.PARAMS}
+        merged.update((k, v) for k, v in params.items() if k in merged)
         rng = random.Random(seed)
         return core_mod.geometry(canvas, merged, rng)

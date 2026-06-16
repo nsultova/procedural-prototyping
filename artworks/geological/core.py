@@ -6,39 +6,42 @@ lacunarity & gain are now threaded into fbm so those knobs take effect
 """
 
 import math
+import random
 
 from engine.types import Path, Canvas
+
 
 _GRADS = tuple((math.cos(a), math.sin(a)) for a in
                (math.pi * 2 * i / 12 for i in range(12)))
 
 
 def _build_perm(seed: int) -> list:
-    import random
     rng = random.Random(seed)
     p = list(range(256))
     rng.shuffle(p)
     return p + p
 
 
+def _dot(gi, fx, fy):
+    g = _GRADS[gi]
+    return g[0] * fx + g[1] * fy
+
+
 def _noise2(x: float, y: float, perm: list) -> float:
-    xi = int(math.floor(x)) & 255
-    yi = int(math.floor(y)) & 255
-    xf = x - math.floor(x)
-    yf = y - math.floor(y)
+    fx = math.floor(x)
+    fy = math.floor(y)
+    xi = int(fx) & 255
+    yi = int(fy) & 255
+    xf = x - fx
+    yf = y - fy
     u = xf * xf * xf * (xf * (xf * 6.0 - 15.0) + 10.0)
     v = yf * yf * yf * (yf * (yf * 6.0 - 15.0) + 10.0)
     aa = perm[perm[xi] + yi] % 12
     ab = perm[perm[xi] + yi + 1] % 12
     ba = perm[perm[xi + 1] + yi] % 12
     bb = perm[perm[xi + 1] + yi + 1] % 12
-
-    def dot(gi, fx, fy):
-        g = _GRADS[gi]
-        return g[0] * fx + g[1] * fy
-
-    x1 = dot(aa, xf, yf) + u * (dot(ba, xf - 1, yf) - dot(aa, xf, yf))
-    x2 = dot(ab, xf, yf - 1) + u * (dot(bb, xf - 1, yf - 1) - dot(ab, xf, yf - 1))
+    x1 = _dot(aa, xf, yf) + u * (_dot(ba, xf - 1, yf) - _dot(aa, xf, yf))
+    x2 = _dot(ab, xf, yf - 1) + u * (_dot(bb, xf - 1, yf - 1) - _dot(ab, xf, yf - 1))
     return x1 + v * (x2 - x1)
 
 
@@ -63,11 +66,12 @@ def _warped_fbm(x, y, perm, perm2, octaves, warp_strength, warp_scale,
 
 
 def _edge_mask(x, y, perm, W, H, edge_inset, edge_roughness, edge_scale):
-    inset = edge_inset
-    dl = x / (W * inset + 1e-6)
-    dr = (W - x) / (W * inset + 1e-6)
-    dt = y / (H * inset + 1e-6)
-    db = (H - y) / (H * inset + 1e-6)
+    w_denom = W * edge_inset + 1e-6
+    h_denom = H * edge_inset + 1e-6
+    dl = x / w_denom
+    dr = (W - x) / w_denom
+    dt = y / h_denom
+    db = (H - y) / h_denom
     d = min(dl, dr, dt, db)
     if edge_roughness > 0:
         nv = _fbm(x * edge_scale, y * edge_scale, perm, 3, 2.0, 0.5)

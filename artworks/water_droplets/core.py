@@ -5,6 +5,7 @@ so the renderer only needs polylines. Random draws use the passed-in rng.
 """
 
 import math
+from collections import namedtuple
 
 from engine.types import Path, Canvas
 
@@ -14,6 +15,8 @@ SECONDARY_DIST_MAX = 1.4
 SECONDARY_DISTORTION = 0.0
 SECONDARY_DIST_FREQ = 5
 SECONDARY_DIST_GROWTH = 0.1
+
+_Drop = namedtuple("_Drop", ["x", "y", "age", "phases"])
 
 
 def _circle(cx, cy, r, n, width):
@@ -53,14 +56,14 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
         y = rng.uniform(H * 0.15, H * 0.85)
         age = rng.uniform(0.4, 1.0)
         phases = [rng.uniform(0, 2 * math.pi) for _ in freqs]
-        drops.append({"x": x, "y": y, "age": age, "phases": phases})
+        drops.append(_Drop(x, y, age, phases))
 
     # Guard div-by-zero for raw callers (UI mins keep the product >= 0.5).
     wavelength = max(ring_spacing * interference_wavelength_factor, 1e-9)
 
     for drop in drops:
-        cx, cy = drop["x"], drop["y"]
-        n_rings = max(2, int(max_rings * drop["age"]))
+        cx, cy = drop.x, drop.y
+        n_rings = max(2, int(max_rings * drop.age))
 
         # Ripple rings
         for ring_idx in range(n_rings):
@@ -69,19 +72,21 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
             pts = []
             for i in range(ring_points):
                 theta = 2 * math.pi * i / ring_points
+                cos_t = math.cos(theta)
+                sin_t = math.sin(theta)
                 r = base_r
-                for freq, phase in zip(freqs, drop["phases"]):
+                for freq, phase in zip(freqs, drop.phases):
                     r += (dist_amp / n_freqs) * math.sin(freq * theta + phase)
-                px = cx + base_r * math.cos(theta)
-                py = cy + base_r * math.sin(theta)
+                px = cx + base_r * cos_t
+                py = cy + base_r * sin_t
                 for other in drops:
                     if other is drop:
                         continue
-                    dx = px - other["x"]
-                    dy = py - other["y"]
+                    dx = px - other.x
+                    dy = py - other.y
                     dist = math.sqrt(dx * dx + dy * dy)
                     r += interference_strength * math.cos(2 * math.pi * dist / wavelength)
-                pts.append((cx + r * math.cos(theta), cy + r * math.sin(theta)))
+                pts.append((cx + r * cos_t, cy + r * sin_t))
             paths.append(Path(points=pts, closed=True, width=stroke_width))
 
         # Impact center
