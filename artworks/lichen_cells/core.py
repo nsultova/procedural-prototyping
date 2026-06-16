@@ -1,13 +1,13 @@
-"""Lichen Cells — Voronoi cellular network with radiating spine fringe.
+"""Lichen Cells — branching skeleton with zone-differentiated Voronoi cells.
 
-Reverse-engineered from microscopic liverwort cross-sections: the interior is a
-Voronoi tessellation whose seed density increases toward the blob boundary
-(large cells at centre, small cells at edge); the perimeter erupts into fine
-outward-radiating needle spines.
+A Bézier branching skeleton defines territory zones; seed density and character
+vary by distance to the nearest branch axis (needle cells → normal → large/void).
+The perimeter of the branch union erupts into fine outward-radiating spine fringe.
 """
 
 import math
 import random
+from dataclasses import dataclass
 
 import numpy as np
 from scipy.spatial import Voronoi
@@ -15,24 +15,218 @@ from scipy.spatial import Voronoi
 from engine.types import Canvas, Path
 
 
-_BLOB_N = 300   # polygon vertex count for the organic blob outline
+@dataclass
+class _Branch:
+    pts: list      # list[tuple[float, float]] sampled along Bézier
+    tangents: list # list[tuple[float, float]] unit tangent at each sample
+    radius: float  # territory radius in mm
+    depth: int     # 0 = primary arm, 1 = secondary tip
 
 
-def _gen_blob(cx: float, cy: float, radius: float, n_lobes: int,
-              roughness: float, rng) -> list:
-    """Organic blob polygon via summed Fourier harmonics on a circle."""
-    coeffs = []
-    for k in range(2, n_lobes + 2):
-        amp = roughness * abs(rng.gauss(0, 1)) / k
-        phase = rng.uniform(0, 2 * math.pi)
-        coeffs.append((k, amp, phase))
+def _bezier(p0, p1, p2, p3, t):
+    u = 1 - t
+    return (
+        u**3*p0[0] + 3*u**2*t*p1[0] + 3*u*t**2*p2[0] + t**3*p3[0],
+        u**3*p0[1] + 3*u**2*t*p1[1] + 3*u*t**2*p2[1] + t**3*p3[1],
+    )
+
+
+def _bezier_tangent(p0, p1, p2, p3, t):
+    u = 1 - t
+    dx = 3*(u**2*(p1[0]-p0[0]) + 2*u*t*(p2[0]-p1[0]) + t**2*(p3[0]-p2[0]))
+    dy = 3*(u**2*(p1[1]-p0[1]) + 2*u*t*(p2[1]-p1[1]) + t**2*(p3[1]-p2[1]))
+    mag = math.sqrt(dx*dx + dy*dy) + 1e-9
+    return dx/mag, dy/mag
+
+
+def _sample_branch(p0, p1, p2, p3, n=24):
+    assert n >= 2
+    pts, tans = [], []
+    for i in range(n):
+        t = i / (n - 1)
+        pts.append(_bezier(p0, p1, p2, p3, t))
+        tans.append(_bezier_tangent(p0, p1, p2, p3, t))
+    return pts, tans
+
+
+def _gen_skeleton(cx: float, cy: float, radius: float, n_primary: int,
+                  angle_spread: float, irregularity: float, rng) -> list:
+    """Branching Bézier skeleton: N primary arms + 1-3 secondary tips each."""
+    branches = []
+
+    for i in range(n_primary):
+        base_angle = 2 * math.pi * i / n_primary + rng.uniform(-0.25, 0.25)
+        prim_len = radius * rng.uniform(0.50, 0.72)
+        prim_r = radius * rng.uniform(0.18, 0.30)
+
+        p0 = (cx, cy)
+        p3 = (cx + prim_len * math.cos(base_angle),
+              cy + prim_len * math.sin(base_angle))
+        ca = base_angle + rng.gauss(0, irregularity * 0.35)
+        p1 = (cx + prim_len * 0.35 * math.cos(ca),
+              cy + prim_len * 0.35 * math.sin(ca))
+        cb = base_angle + rng.gauss(0, irregularity * 0.25)
+        p2 = (p3[0] - prim_len * 0.20 * math.cos(cb),
+              p3[1] - prim_len * 0.20 * math.sin(cb))
+
+        pts, tans = _sample_branch(p0, p1, p2, p3)
+        branches.append(_Branch(pts=pts, tangents=tans, radius=prim_r, depth=0))
+
+        n_sec = rng.randint(1, 3)
+        for _ in range(n_sec):
+            sec_angle = base_angle + rng.uniform(-angle_spread, angle_spread)
+            sec_len = radius * rng.uniform(0.18, 0.38)
+            sec_r = prim_r * rng.uniform(0.45, 0.70)
+
+            s0 = p3
+            s3 = (p3[0] + sec_len * math.cos(sec_angle),
+                  p3[1] + sec_len * math.sin(sec_angle))
+            sc = sec_angle + rng.gauss(0, irregularity * 0.3)
+            s1 = (s0[0] + sec_len * 0.4 * math.cos(sc),
+                  s0[1] + sec_len * 0.4 * math.sin(sc))
+            s2 = (s3[0] - sec_len * 0.2 * math.cos(sc),
+                  s3[1] - sec_len * 0.2 * math.sin(sc))
+
+            pts2, tans2 = _sample_branch(s0, s1, s2, s3)
+            branches.append(_Branch(pts=pts2, tangents=tans2, radius=sec_r, depth=1))
+
+    return branches
+
+
+def _branch_envelope(branches: list, cx: float, cy: float, n_pts: int = 240) -> list:
+    """Radial-scan union of all branch capsules → star-shaped outline polygon.
+
+    For each angle θ, casts a ray from (cx, cy) and finds how far out any
+    branch point's radius circle extends in that direction.
+    """
     pts = []
-    for i in range(_BLOB_N):
-        theta = 2 * math.pi * i / _BLOB_N
-        r = radius + sum(radius * a * math.cos(k * theta + ph) for k, a, ph in coeffs)
-        r = max(min(r, radius * 1.15), radius * 0.2)
-        pts.append((cx + r * math.cos(theta), cy + r * math.sin(theta)))
+    for i in range(n_pts):
+        theta = 2 * math.pi * i / n_pts
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        r_max = 0.0
+        for branch in branches:
+            for bx, by in branch.pts:
+                dot = (bx - cx) * cos_t + (by - cy) * sin_t
+                if dot <= 0:
+                    continue
+                perp = abs((by - cy) * cos_t - (bx - cx) * sin_t)
+                if perp < branch.radius:
+                    r_ext = dot + math.sqrt(branch.radius**2 - perp**2)
+                    if r_ext > r_max:
+                        r_max = r_ext
+        pts.append((cx + r_max * cos_t, cy + r_max * sin_t))
     return pts
+
+
+def _closest_on_branch(x: float, y: float, branch: _Branch):
+    """Distance and unit tangent at the closest point on the branch polyline."""
+    best_d2 = float('inf')
+    best_tang = (1.0, 0.0)
+    for i in range(len(branch.pts) - 1):
+        ax, ay = branch.pts[i]
+        bx2, by2 = branch.pts[i + 1]
+        dx, dy = bx2 - ax, by2 - ay
+        l2 = dx*dx + dy*dy
+        if l2 < 1e-10:
+            px, py, ti = ax, ay, i
+        else:
+            t = max(0.0, min(1.0, ((x - ax)*dx + (y - ay)*dy) / l2))
+            px, py = ax + t*dx, ay + t*dy
+            ti = min(i + round(t), len(branch.tangents) - 1)
+        d2 = (x - px)**2 + (y - py)**2
+        if d2 < best_d2:
+            best_d2 = d2
+            best_tang = branch.tangents[ti]
+    return math.sqrt(best_d2), best_tang
+
+
+def _query_territory(x: float, y: float, branches: list):
+    """(dist_to_nearest_branch, tangent_at_closest, branch_depth)."""
+    best_d = float('inf')
+    best_tang = (1.0, 0.0)
+    best_depth = 0
+    for branch in branches:
+        d, tang = _closest_on_branch(x, y, branch)
+        if d < best_d:
+            best_d, best_tang, best_depth = d, tang, branch.depth
+    return best_d, best_tang, best_depth
+
+
+def _gen_voids(branches: list, n_voids: int, rng) -> list:
+    """Elliptical void regions placed in branch mid-to-outer zones.
+
+    Returns list of (cx, cy, rx, ry, angle) tuples.
+    Seeds inside these ellipses are excluded during placement.
+    """
+    candidates = []
+    for branch in branches:
+        for i, (bx, by) in enumerate(branch.pts):
+            tx, ty = branch.tangents[i]
+            px, py = -ty, tx  # perpendicular to tangent
+            for sign in (1, -1):
+                frac = rng.uniform(0.4, 0.8)
+                cx = bx + sign * px * branch.radius * frac
+                cy = by + sign * py * branch.radius * frac
+                candidates.append((cx, cy, branch.radius))
+
+    rng.shuffle(candidates)
+    voids = []
+    for cx, cy, br in candidates[:n_voids]:
+        rx = br * rng.uniform(0.25, 0.55)
+        ry = rx * rng.uniform(0.45, 0.90)
+        angle = rng.uniform(0, math.pi)
+        voids.append((cx, cy, rx, ry, angle))
+    return voids
+
+
+def _in_any_void(x: float, y: float, voids: list) -> bool:
+    for vcx, vcy, rx, ry, angle in voids:
+        dx, dy = x - vcx, y - vcy
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        lx = dx * cos_a + dy * sin_a
+        ly = -dx * sin_a + dy * cos_a
+        if (lx / rx)**2 + (ly / ry)**2 <= 1.0:
+            return True
+    return False
+
+
+def _gen_seeds_v2(envelope: list, branches: list, n_seeds: int,
+                  inner_ratio: float, voids: list, rng) -> list:
+    """Territory-aware Voronoi seed placement.
+
+    Acceptance probability by zone (keyed off max branch territory radius):
+      dist < inner_ratio * max_r  → 1.00  (dense → small/needle cells)
+      dist < max_r                → 0.38  (normal cells)
+      dist ≥ max_r                → 0.10  (large sparse cells)
+    Seeds inside any void ellipse are always rejected.
+    """
+    poly_np = np.array(envelope)
+    min_x, max_x = float(poly_np[:, 0].min()), float(poly_np[:, 0].max())
+    min_y, max_y = float(poly_np[:, 1].min()), float(poly_np[:, 1].max())
+    max_r = max(b.radius for b in branches)
+    r_inner = max_r * inner_ratio
+
+    seeds = []
+    batch = max(n_seeds * 8, 300)
+    while len(seeds) < n_seeds:
+        cxs = np.array([rng.uniform(min_x, max_x) for _ in range(batch)])
+        cys = np.array([rng.uniform(min_y, max_y) for _ in range(batch)])
+        mask = _pip_batch(cxs, cys, poly_np)
+        for x, y in zip(cxs[mask], cys[mask]):
+            if len(seeds) >= n_seeds:
+                break
+            if voids and _in_any_void(x, y, voids):
+                continue
+            dist, _, _ = _query_territory(x, y, branches)
+            if dist < r_inner:
+                accept = 1.00
+            elif dist < max_r:
+                accept = 0.38
+            else:
+                accept = 0.10
+            if rng.random() < accept:
+                seeds.append([x, y])
+    return seeds[:n_seeds]
 
 
 def _pip_batch(x: np.ndarray, y: np.ndarray, poly: np.ndarray) -> np.ndarray:
@@ -103,31 +297,6 @@ def _clip_segment(p1, p2, polygon):
     return None
 
 
-def _gen_seeds(blob: list, cx: float, cy: float,
-               n_seeds: int, edge_bias: float, rng) -> list:
-    """Scatter Voronoi seeds biased toward blob boundary (more seeds → smaller cells at edge)."""
-    poly_np = np.array(blob)
-    min_x, max_x = float(poly_np[:, 0].min()), float(poly_np[:, 0].max())
-    min_y, max_y = float(poly_np[:, 1].min()), float(poly_np[:, 1].max())
-    rx = (max_x - min_x) * 0.5 + 1e-6
-    ry = (max_y - min_y) * 0.5 + 1e-6
-
-    seeds = []
-    batch = max(n_seeds * 6, 200)
-    while len(seeds) < n_seeds:
-        cxs = np.array([rng.uniform(min_x, max_x) for _ in range(batch)])
-        cys = np.array([rng.uniform(min_y, max_y) for _ in range(batch)])
-        inside = _pip_batch(cxs, cys, poly_np)
-        for x, y in zip(cxs[inside], cys[inside]):
-            if len(seeds) >= n_seeds:
-                break
-            d = min(1.0, math.sqrt(((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2))
-            # acceptance probability increases with distance from centre
-            if rng.random() < 0.15 + 0.85 * d ** edge_bias:
-                seeds.append([x, y])
-    return seeds[:n_seeds]
-
-
 def _voronoi_paths(seeds: list, blob: list, stroke_w: float) -> list:
     """Compute Voronoi, clip every ridge to the blob, return Paths."""
     arr = np.array(seeds, dtype=float)
@@ -180,27 +349,36 @@ def _gen_fringe(blob: list, n_spines: int, spine_len: float,
 
 def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     W, H = canvas.width, canvas.height
-    cell_count   = int(p["cell_count"])
-    blob_rough   = p["blob_roughness"]
-    blob_lobes   = int(p["blob_lobes"])
-    edge_bias    = p["edge_bias"]
-    spine_count  = int(p["spine_count"])
-    spine_length = p["spine_length"]
-    spine_width  = p["spine_width"]
-    stroke_width = p["stroke_width"]
+    branch_count  = int(p["branch_count"])
+    branch_spread = p["branch_spread"]
+    branch_irr    = p["branch_irregular"]
+    cell_count    = int(p["cell_count"])
+    inner_zone    = p["inner_zone"]
+    void_count    = int(p["void_count"])
+    spine_count   = int(p["spine_count"])
+    spine_length  = p["spine_length"]
+    spine_width   = p["spine_width"]
+    stroke_width  = p["stroke_width"]
 
     cx, cy = W / 2, H / 2
-    radius = min(W, H) * 0.38
+    radius = min(W, H) * 0.40
 
-    blob = _gen_blob(cx, cy, radius, blob_lobes, blob_rough,
-                     random.Random(rng.randint(0, 2**31 - 1)))
-    seeds = _gen_seeds(blob, cx, cy, cell_count, edge_bias,
-                       random.Random(rng.randint(0, 2**31 - 1)))
+    sk_rng     = random.Random(rng.randint(0, 2**31 - 1))
+    seed_rng   = random.Random(rng.randint(0, 2**31 - 1))
+    void_rng   = random.Random(rng.randint(0, 2**31 - 1))
+    fringe_rng = random.Random(rng.randint(0, 2**31 - 1))
+
+    branches = _gen_skeleton(cx, cy, radius, branch_count,
+                             branch_spread, branch_irr, sk_rng)
+    envelope = _branch_envelope(branches, cx, cy)
+    voids    = _gen_voids(branches, void_count, void_rng)
+    seeds    = _gen_seeds_v2(envelope, branches, cell_count,
+                             inner_zone, voids, seed_rng)
 
     paths: list[Path] = []
-    paths.append(Path(points=list(blob), closed=True, width=stroke_width))
+    paths.append(Path(points=list(envelope), closed=True, width=stroke_width))
     if len(seeds) >= 4:
-        paths.extend(_voronoi_paths(seeds, blob, stroke_width))
-    paths.extend(_gen_fringe(blob, spine_count, spine_length, spine_width, stroke_width,
-                             random.Random(rng.randint(0, 2**31 - 1))))
+        paths.extend(_voronoi_paths(seeds, envelope, stroke_width))
+    paths.extend(_gen_fringe(envelope, spine_count, spine_length,
+                             spine_width, stroke_width, fringe_rng))
     return paths
