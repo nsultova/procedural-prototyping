@@ -118,6 +118,40 @@ def _branch_envelope(branches: list, cx: float, cy: float, n_pts: int = 240) -> 
     return pts
 
 
+def _closest_on_branch(x: float, y: float, branch: _Branch):
+    """Distance and unit tangent at the closest point on the branch polyline."""
+    best_d2 = float('inf')
+    best_tang = (1.0, 0.0)
+    for i in range(len(branch.pts) - 1):
+        ax, ay = branch.pts[i]
+        bx2, by2 = branch.pts[i + 1]
+        dx, dy = bx2 - ax, by2 - ay
+        l2 = dx*dx + dy*dy
+        if l2 < 1e-10:
+            px, py, ti = ax, ay, i
+        else:
+            t = max(0.0, min(1.0, ((x - ax)*dx + (y - ay)*dy) / l2))
+            px, py = ax + t*dx, ay + t*dy
+            ti = min(i + round(t), len(branch.tangents) - 1)
+        d2 = (x - px)**2 + (y - py)**2
+        if d2 < best_d2:
+            best_d2 = d2
+            best_tang = branch.tangents[ti]
+    return math.sqrt(best_d2), best_tang
+
+
+def _query_territory(x: float, y: float, branches: list):
+    """(dist_to_nearest_branch, tangent_at_closest, branch_depth)."""
+    best_d = float('inf')
+    best_tang = (1.0, 0.0)
+    best_depth = 0
+    for branch in branches:
+        d, tang = _closest_on_branch(x, y, branch)
+        if d < best_d:
+            best_d, best_tang, best_depth = d, tang, branch.depth
+    return best_d, best_tang, best_depth
+
+
 _BLOB_N = 300   # polygon vertex count for the organic blob outline
 
 

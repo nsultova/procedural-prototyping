@@ -160,3 +160,37 @@ def test_branch_envelope_star_shaped():
     for x, y in env:
         r = math.sqrt((x - 150)**2 + (y - 150)**2)
         assert r > 0
+
+
+def test_territory_at_branch_center_near_zero():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _query_territory
+    branches = _gen_skeleton(cx=150, cy=150, radius=100,
+                             n_primary=4, angle_spread=0.6,
+                             irregularity=0.4, rng=random.Random(42))
+    # Query at the midpoint of the first primary branch
+    b = branches[0]
+    mid = b.pts[len(b.pts) // 2]
+    dist, tang, depth = _query_territory(mid[0], mid[1], branches)
+    assert dist < 0.5   # essentially on the branch
+    assert depth == 0   # primary branch
+
+def test_territory_tangent_is_unit_vector():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _query_territory
+    branches = _gen_skeleton(150, 150, 100, 3, 0.5, 0.3, random.Random(5))
+    dist, tang, depth = _query_territory(150, 150, branches)
+    assert dist >= 0
+    tx, ty = tang
+    assert math.isclose(math.sqrt(tx*tx + ty*ty), 1.0, abs_tol=1e-6)
+
+def test_territory_depth_matches_branch():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _query_territory
+    branches = _gen_skeleton(150, 150, 100, 2, 0.5, 0.2, random.Random(9))
+    # The secondary branch tips are at depth=1; query near a secondary tip
+    secondary = [b for b in branches if b.depth == 1][0]
+    tip = secondary.pts[-1]
+    dist, tang, depth = _query_territory(tip[0], tip[1], branches)
+    assert dist < 1.0
+    assert depth == 1
