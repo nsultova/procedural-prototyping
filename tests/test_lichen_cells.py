@@ -99,3 +99,32 @@ def test_sample_branch_length():
     exp1 = _bezier(p0, p1, p2, p3, 1.0)
     assert math.isclose(pts[0][0], exp0[0]) and math.isclose(pts[0][1], exp0[1])
     assert math.isclose(pts[-1][0], exp1[0]) and math.isclose(pts[-1][1], exp1[1])
+
+
+def test_gen_skeleton_branch_count():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton
+    branches = _gen_skeleton(cx=150, cy=150, radius=100,
+                             n_primary=4, angle_spread=0.6,
+                             irregularity=0.4, rng=random.Random(42))
+    assert len(branches) >= 4  # at minimum n_primary primary branches
+    for b in branches:
+        assert len(b.pts) >= 2
+        for x, y in b.pts:
+            assert math.isfinite(x) and math.isfinite(y)
+
+def test_gen_skeleton_deterministic():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton
+    a = _gen_skeleton(150, 150, 100, 4, 0.6, 0.4, random.Random(7))
+    b = _gen_skeleton(150, 150, 100, 4, 0.6, 0.4, random.Random(7))
+    assert [br.pts for br in a] == [br.pts for br in b]
+
+def test_gen_skeleton_primary_depth_zero():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton
+    branches = _gen_skeleton(150, 150, 100, 3, 0.5, 0.3, random.Random(1))
+    primaries = [b for b in branches if b.depth == 0]
+    assert len(primaries) == 3
+    secondaries = [b for b in branches if b.depth == 1]
+    assert len(secondaries) >= 3  # at least one secondary per primary

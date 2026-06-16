@@ -49,6 +49,50 @@ def _sample_branch(p0, p1, p2, p3, n=24):
     return pts, tans
 
 
+def _gen_skeleton(cx: float, cy: float, radius: float, n_primary: int,
+                  angle_spread: float, irregularity: float, rng) -> list:
+    """Branching Bézier skeleton: N primary arms + 1-3 secondary tips each."""
+    branches = []
+
+    for i in range(n_primary):
+        base_angle = 2 * math.pi * i / n_primary + rng.uniform(-0.25, 0.25)
+        prim_len = radius * rng.uniform(0.50, 0.72)
+        prim_r = radius * rng.uniform(0.18, 0.30)
+
+        p0 = (cx, cy)
+        p3 = (cx + prim_len * math.cos(base_angle),
+              cy + prim_len * math.sin(base_angle))
+        ca = base_angle + rng.gauss(0, irregularity * 0.35)
+        p1 = (cx + prim_len * 0.35 * math.cos(ca),
+              cy + prim_len * 0.35 * math.sin(ca))
+        cb = base_angle + rng.gauss(0, irregularity * 0.25)
+        p2 = (p3[0] - prim_len * 0.20 * math.cos(cb),
+              p3[1] - prim_len * 0.20 * math.sin(cb))
+
+        pts, tans = _sample_branch(p0, p1, p2, p3)
+        branches.append(_Branch(pts=pts, tangents=tans, radius=prim_r, depth=0))
+
+        n_sec = rng.randint(1, 3)
+        for _ in range(n_sec):
+            sec_angle = base_angle + rng.uniform(-angle_spread, angle_spread)
+            sec_len = radius * rng.uniform(0.18, 0.38)
+            sec_r = prim_r * rng.uniform(0.45, 0.70)
+
+            s0 = p3
+            s3 = (p3[0] + sec_len * math.cos(sec_angle),
+                  p3[1] + sec_len * math.sin(sec_angle))
+            sc = sec_angle + rng.gauss(0, irregularity * 0.3)
+            s1 = (s0[0] + sec_len * 0.4 * math.cos(sc),
+                  s0[1] + sec_len * 0.4 * math.sin(sc))
+            s2 = (s3[0] - sec_len * 0.2 * math.cos(sc),
+                  s3[1] - sec_len * 0.2 * math.sin(sc))
+
+            pts2, tans2 = _sample_branch(s0, s1, s2, s3)
+            branches.append(_Branch(pts=pts2, tangents=tans2, radius=sec_r, depth=1))
+
+    return branches
+
+
 _BLOB_N = 300   # polygon vertex count for the organic blob outline
 
 
