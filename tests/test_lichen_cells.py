@@ -194,3 +194,30 @@ def test_territory_depth_matches_branch():
     dist, tang, depth = _query_territory(tip[0], tip[1], branches)
     assert dist < 1.0
     assert depth == 1
+
+
+def test_gen_voids_count():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _gen_voids
+    branches = _gen_skeleton(cx=150, cy=150, radius=100,
+                             n_primary=4, angle_spread=0.6,
+                             irregularity=0.4, rng=random.Random(42))
+    voids = _gen_voids(branches, n_voids=6, rng=random.Random(42))
+    assert len(voids) == 6
+    for cx, cy, rx, ry, angle in voids:
+        assert rx > 0 and ry > 0
+
+def test_in_any_void_inside_and_outside():
+    from artworks.lichen_cells.core import _in_any_void
+    voids = [(100.0, 100.0, 10.0, 6.0, 0.0)]
+    assert _in_any_void(100.0, 100.0, voids)    # centre
+    assert _in_any_void(109.0, 100.0, voids)    # just inside x-edge
+    assert not _in_any_void(111.0, 100.0, voids) # just outside
+    assert not _in_any_void(200.0, 200.0, voids) # far away
+
+def test_gen_voids_zero_returns_empty():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _gen_voids
+    branches = _gen_skeleton(150, 150, 100, 3, 0.5, 0.3, random.Random(1))
+    voids = _gen_voids(branches, n_voids=0, rng=random.Random(1))
+    assert voids == []

@@ -152,6 +152,44 @@ def _query_territory(x: float, y: float, branches: list):
     return best_d, best_tang, best_depth
 
 
+def _gen_voids(branches: list, n_voids: int, rng) -> list:
+    """Elliptical void regions placed in branch mid-to-outer zones.
+
+    Returns list of (cx, cy, rx, ry, angle) tuples.
+    Seeds inside these ellipses are excluded during placement.
+    """
+    candidates = []
+    for branch in branches:
+        for i, (bx, by) in enumerate(branch.pts):
+            tx, ty = branch.tangents[i]
+            px, py = -ty, tx  # perpendicular to tangent
+            for sign in (1, -1):
+                frac = rng.uniform(0.4, 0.8)
+                cx = bx + sign * px * branch.radius * frac
+                cy = by + sign * py * branch.radius * frac
+                candidates.append((cx, cy, branch.radius))
+
+    rng.shuffle(candidates)
+    voids = []
+    for cx, cy, br in candidates[:n_voids]:
+        rx = br * rng.uniform(0.25, 0.55)
+        ry = rx * rng.uniform(0.45, 0.90)
+        angle = rng.uniform(0, math.pi)
+        voids.append((cx, cy, rx, ry, angle))
+    return voids
+
+
+def _in_any_void(x: float, y: float, voids: list) -> bool:
+    for vcx, vcy, rx, ry, angle in voids:
+        dx, dy = x - vcx, y - vcy
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
+        lx = dx * cos_a + dy * sin_a
+        ly = -dx * sin_a + dy * cos_a
+        if (lx / rx)**2 + (ly / ry)**2 <= 1.0:
+            return True
+    return False
+
+
 _BLOB_N = 300   # polygon vertex count for the organic blob outline
 
 
