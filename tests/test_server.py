@@ -91,3 +91,29 @@ def test_render_bad_seed_returns_json_400(client):
                     content_type="application/json")
     assert r.status_code == 400
     assert "error" in r.get_json()
+
+
+def _render(client, **overrides):
+    payload = {"artwork": "geological", "seed": 42,
+               "canvas": {"width": 200, "height": 200},
+               "params": {"num_lines": 20, "x_resolution": 300}}
+    payload.update(overrides)
+    r = client.post("/api/render", data=json.dumps(payload),
+                    content_type="application/json")
+    assert r.status_code == 200
+    return r.get_json()["svg"]
+
+
+def test_preview_render_is_lighter_than_full(client):
+    # preview overlays geological's PREVIEW (x_resolution 300 -> 80), so the
+    # preview SVG has far fewer sampled points and is shorter.
+    full = _render(client)
+    preview = _render(client, preview=True)
+    assert len(preview) < len(full)
+
+
+def test_export_ignores_preview_flag(client):
+    # export must always render at full quality, even if preview is also set.
+    plain_export = _render(client, export=True)
+    export_with_preview = _render(client, export=True, preview=True)
+    assert len(export_with_preview) == len(plain_export)

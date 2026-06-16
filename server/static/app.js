@@ -5,9 +5,10 @@ const state = {
   canvas: { width: 200, height: 200, preset: "Square" },
   view: { scale: 1, x: 0, y: 0 },
 };
-let renderTimer = null;
+let fullTimer = null;    // fires a full-quality render once interaction settles
 let rendering = false;   // single-flight: at most one render in flight
 let dirty = false;       // a change arrived while a render was running
+let pendingPreview = true; // mode for the next render (low-res preview vs full)
 let loadSeq = 0;         // guards against rapid artwork switches racing
 
 const $ = (sel) => document.querySelector(sel);
@@ -184,14 +185,19 @@ function buildPayload(extra = {}) {
 }
 
 function scheduleRender() {
-  clearTimeout(renderTimer);
-  renderTimer = setTimeout(kickRender, 120);
+  // Adaptive: kick a fast low-res preview now (single-flight self-throttles it
+  // to render speed during a continuous drag), and schedule one full-quality
+  // render for when the user stops adjusting.
+  kickRender(true);
+  clearTimeout(fullTimer);
+  fullTimer = setTimeout(() => kickRender(false), 350);
 }
 
-function kickRender() {
-  // Single-flight: never have more than one render outstanding. If one is
-  // running, mark dirty and re-render once it finishes (latest wins). This is
-  // what prevents the slider-drag pile-up that froze the UI.
+function kickRender(preview) {
+  // Single-flight: never more than one render outstanding. If one is running,
+  // mark dirty and re-render once it finishes (latest wins). This is what
+  // prevents the slider-drag pile-up that froze the UI.
+  pendingPreview = preview;
   if (rendering) { dirty = true; return; }
   doRender();
 }
@@ -199,18 +205,19 @@ function kickRender() {
 async function doRender() {
   rendering = true;
   dirty = false;
+  const preview = pendingPreview;
   try {
     const r = await fetch("/api/render", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildPayload()),
+      body: JSON.stringify(buildPayload({ preview })),
     });
     const body = await r.json();
     if (!r.ok) throw new Error(body.error || "render failed");
     hideError();
     $("#canvas").innerHTML = body.svg;
-    $("#timing").textContent = `${body.ms} ms`;
+    $("#timing").textContent = `${body.ms} ms${preview ? " (preview)" : ""}`;
     applyView();
-    saveSession();
+    if (!preview) saveSession();  // persist on the full-quality render
   } catch (e) {
     showError(e.message);
   } finally {

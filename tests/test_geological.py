@@ -71,6 +71,13 @@ def test_lacunarity_gain_change_output():
     assert [p.points for p in base] != [p.points for p in laced]
 
 
+def test_preview_reduces_x_resolution_below_default():
+    from artworks.geological.params import PARAMS, PREVIEW
+    default_xres = next(p.default for p in PARAMS if p.name == "x_resolution")
+    assert "x_resolution" in PREVIEW
+    assert PREVIEW["x_resolution"] < default_xres
+
+
 def test_degenerate_inputs_do_not_crash():
     # num_lines=1 (denom guard) and x_resolution below the UI min still render.
     canvas = Canvas(width=200, height=200)

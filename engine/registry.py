@@ -78,6 +78,14 @@ class Registry:
                 merged[key] = value
         return merged
 
+    def preview_params(self, name: str) -> dict:
+        """Optional per-artwork param overrides for fast interactive previews.
+
+        Returns the artwork's `PREVIEW` dict (empty if it declares none).
+        """
+        _core, params_mod = self._get(name)
+        return dict(getattr(params_mod, "PREVIEW", {}))
+
     def render_paths(self, name: str, params: dict, seed: int, canvas: Canvas) -> list[Path]:
         core_mod, _params_mod = self._get(name)
         merged = self.merge_params(name, params)
