@@ -13,6 +13,7 @@ All output is open polylines; tone comes from stroke density.
 """
 
 import math
+from collections import defaultdict
 
 from engine.types import Path, Canvas
 
@@ -41,7 +42,7 @@ def _mesh_links(nodes, parents, mesh_dist, mesh_density, width, rng):
                     # gentle sag so links read as organic cell-walls, not struts
                     mx, my = (x + nx) * 0.5, (y + ny) * 0.5
                     sag = (rng.random() - 0.5) * dist * 0.35
-                    px, py = -(ny - y) / (dist or 1.0), (nx - x) / (dist or 1.0)
+                    px, py = -(ny - y) / dist, (nx - x) / dist
                     links.append(Path(points=[(x, y),
                                               (mx + px * sag, my + py * sag),
                                               (nx, ny)], width=width))
@@ -61,12 +62,11 @@ def _junction_bursts(nodes, children, burst_density, burst_strokes, burst_reach,
         if rng.random() >= burst_density:
             continue
         x, y = nodes[i]
-        # More strokes for higher-degree junctions
-        n = max(2, int(burst_strokes * (0.5 + 0.7 * rng.random()) * (0.7 + 0.3 * min(degree, 5) / 5.0)))
-        reach = burst_reach * (0.8 + 0.4 * min(degree, 5) / 5.0)
+        deg_frac = min(degree, 5) / 5.0
+        n = max(2, int(burst_strokes * (0.5 + 0.7 * rng.random()) * (0.7 + 0.3 * deg_frac)))
+        reach = burst_reach * (0.8 + 0.4 * deg_frac)
         for _ in range(n):
             ang = rng.random() * 2 * math.pi
-            # Stroke starts near the node, extends outward
             r_start = reach * rng.random() ** 0.5 * 0.4
             sx = x + math.cos(ang) * r_start
             sy = y + math.sin(ang) * r_start
@@ -162,7 +162,7 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     for _ in range(max_steps):
         if not active:
             break
-        pulls = {}
+        pulls = defaultdict(lambda: [0.0, 0.0])
         survivors = []
         for (ax, ay) in active:
             ni, d = nearest_within(ax, ay)
@@ -174,12 +174,8 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
             survivors.append((ax, ay))
             nx, ny = nodes[ni]
             inv = 1.0 / d
-            acc = pulls.get(ni)
-            if acc is None:
-                pulls[ni] = [(ax - nx) * inv, (ay - ny) * inv]
-            else:
-                acc[0] += (ax - nx) * inv
-                acc[1] += (ay - ny) * inv
+            pulls[ni][0] += (ax - nx) * inv
+            pulls[ni][1] += (ay - ny) * inv
         active = survivors
 
         if pulls:
@@ -189,19 +185,18 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
                     continue
                 grow(ni, dx / mag, dy / mag)
         elif active:
-            best_d, best_ni, best_a = float("inf"), -1, None
+            best_d, best_ni, best_ax, best_ay = float("inf"), -1, 0.0, 0.0
             for (ax, ay) in active[:200]:
                 for i in range(len(nodes)):
-                    nxx, nyy = nodes[i]
-                    d = math.hypot(ax - nxx, ay - nyy)
+                    nx, ny = nodes[i]
+                    d = math.hypot(ax - nx, ay - ny)
                     if d < best_d:
-                        best_d, best_ni, best_a = d, i, (ax, ay)
+                        best_d, best_ni, best_ax, best_ay = d, i, ax, ay
             if best_ni < 0:
                 break
-            ax, ay = best_a
             nx, ny = nodes[best_ni]
             dd = best_d or 1.0
-            grow(best_ni, (ax - nx) / dd, (ay - ny) / dd)
+            grow(best_ni, (best_ax - nx) / dd, (best_ay - ny) / dd)
         else:
             break
 
@@ -217,8 +212,7 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
 
     def width_of(i):
         norm = leaves[i] / total_leaves
-        w = min_w + (max_w - min_w) * norm ** w_exp
-        return max(min_w, min(max_w, w))
+        return min_w + (max_w - min_w) * norm ** w_exp
 
     # --- veins: continuous strands as polylines ---
     paths: list[Path] = []
