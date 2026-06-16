@@ -17,9 +17,17 @@ PARAMS = [
     Param("min_width",       "Min width (mm)",    0.1,  1.0,  0.05, 0.25, group="Taper"),
     Param("max_width",       "Max width (mm)",    0.3,  4.0,  0.1,  1.6,  group="Taper"),
     Param("width_exponent",  "Taper exponent",    0.3,  3.0,  0.1,  0.7,  group="Taper"),
+    # Fronds — hatched lobed masses at the growth frontier (fill=0 -> bare veins)
+    Param("frond_density",   "Frond density",     0.0,  1.0,  0.05, 0.6,  group="Fronds"),
+    Param("frond_size",      "Frond size (mm)",   3,    25,   1,    11,   group="Fronds"),
+    Param("frond_lobes",     "Lobiness",          0.0,  1.0,  0.05, 0.45, group="Fronds"),
+    Param("frond_fill",      "Hatch density",     0,    160,  5,    90,   group="Fronds"),
+    Param("frond_stroke",    "Hatch length (mm)", 0.5,  6.0,  0.5,  1.8,  group="Fronds"),
+    # Mesh — thin reconnecting links -> loops/cells (density 0 -> off)
+    Param("mesh_density",    "Mesh density",      0.0,  1.0,  0.05, 0.28, group="Mesh"),
+    Param("mesh_dist",       "Mesh reach (mm)",   2,    30,   1,    7,    group="Mesh"),
 ]
 
-# Interactive previews use far fewer food points / steps for snappy dragging;
-# the full-quality render fires on settle and export is always full. Form
-# (branching character) is preserved, only density drops.
-PREVIEW = {"num_attractors": 400, "max_steps": 350}
+# Interactive previews: far fewer food points / steps and lighter frond fill for
+# snappy dragging. The full-quality render fires on settle; export is always full.
+PREVIEW = {"num_attractors": 400, "max_steps": 350, "frond_fill": 30}
