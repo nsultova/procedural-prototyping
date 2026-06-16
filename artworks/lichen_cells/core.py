@@ -229,26 +229,6 @@ def _gen_seeds_v2(envelope: list, branches: list, n_seeds: int,
     return seeds[:n_seeds]
 
 
-_BLOB_N = 300   # polygon vertex count for the organic blob outline
-
-
-def _gen_blob(cx: float, cy: float, radius: float, n_lobes: int,
-              roughness: float, rng) -> list:
-    """Organic blob polygon via summed Fourier harmonics on a circle."""
-    coeffs = []
-    for k in range(2, n_lobes + 2):
-        amp = roughness * abs(rng.gauss(0, 1)) / k
-        phase = rng.uniform(0, 2 * math.pi)
-        coeffs.append((k, amp, phase))
-    pts = []
-    for i in range(_BLOB_N):
-        theta = 2 * math.pi * i / _BLOB_N
-        r = radius + sum(radius * a * math.cos(k * theta + ph) for k, a, ph in coeffs)
-        r = max(min(r, radius * 1.15), radius * 0.2)
-        pts.append((cx + r * math.cos(theta), cy + r * math.sin(theta)))
-    return pts
-
-
 def _pip_batch(x: np.ndarray, y: np.ndarray, poly: np.ndarray) -> np.ndarray:
     """Vectorised ray-casting point-in-polygon for numpy arrays."""
     inside = np.zeros(len(x), dtype=bool)
@@ -317,31 +297,6 @@ def _clip_segment(p1, p2, polygon):
     return None
 
 
-def _gen_seeds(blob: list, cx: float, cy: float,
-               n_seeds: int, edge_bias: float, rng) -> list:
-    """Scatter Voronoi seeds biased toward blob boundary (more seeds → smaller cells at edge)."""
-    poly_np = np.array(blob)
-    min_x, max_x = float(poly_np[:, 0].min()), float(poly_np[:, 0].max())
-    min_y, max_y = float(poly_np[:, 1].min()), float(poly_np[:, 1].max())
-    rx = (max_x - min_x) * 0.5 + 1e-6
-    ry = (max_y - min_y) * 0.5 + 1e-6
-
-    seeds = []
-    batch = max(n_seeds * 6, 200)
-    while len(seeds) < n_seeds:
-        cxs = np.array([rng.uniform(min_x, max_x) for _ in range(batch)])
-        cys = np.array([rng.uniform(min_y, max_y) for _ in range(batch)])
-        inside = _pip_batch(cxs, cys, poly_np)
-        for x, y in zip(cxs[inside], cys[inside]):
-            if len(seeds) >= n_seeds:
-                break
-            d = min(1.0, math.sqrt(((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2))
-            # acceptance probability increases with distance from centre
-            if rng.random() < 0.15 + 0.85 * d ** edge_bias:
-                seeds.append([x, y])
-    return seeds[:n_seeds]
-
-
 def _voronoi_paths(seeds: list, blob: list, stroke_w: float) -> list:
     """Compute Voronoi, clip every ridge to the blob, return Paths."""
     arr = np.array(seeds, dtype=float)
@@ -394,27 +349,36 @@ def _gen_fringe(blob: list, n_spines: int, spine_len: float,
 
 def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     W, H = canvas.width, canvas.height
-    cell_count   = int(p["cell_count"])
-    blob_rough   = p["blob_roughness"]
-    blob_lobes   = int(p["blob_lobes"])
-    edge_bias    = p["edge_bias"]
-    spine_count  = int(p["spine_count"])
-    spine_length = p["spine_length"]
-    spine_width  = p["spine_width"]
-    stroke_width = p["stroke_width"]
+    branch_count  = int(p["branch_count"])
+    branch_spread = p["branch_spread"]
+    branch_irr    = p["branch_irregular"]
+    cell_count    = int(p["cell_count"])
+    inner_zone    = p["inner_zone"]
+    void_count    = int(p["void_count"])
+    spine_count   = int(p["spine_count"])
+    spine_length  = p["spine_length"]
+    spine_width   = p["spine_width"]
+    stroke_width  = p["stroke_width"]
 
     cx, cy = W / 2, H / 2
-    radius = min(W, H) * 0.38
+    radius = min(W, H) * 0.40
 
-    blob = _gen_blob(cx, cy, radius, blob_lobes, blob_rough,
-                     random.Random(rng.randint(0, 2**31 - 1)))
-    seeds = _gen_seeds(blob, cx, cy, cell_count, edge_bias,
-                       random.Random(rng.randint(0, 2**31 - 1)))
+    sk_rng     = random.Random(rng.randint(0, 2**31 - 1))
+    seed_rng   = random.Random(rng.randint(0, 2**31 - 1))
+    void_rng   = random.Random(rng.randint(0, 2**31 - 1))
+    fringe_rng = random.Random(rng.randint(0, 2**31 - 1))
+
+    branches = _gen_skeleton(cx, cy, radius, branch_count,
+                             branch_spread, branch_irr, sk_rng)
+    envelope = _branch_envelope(branches, cx, cy)
+    voids    = _gen_voids(branches, void_count, void_rng)
+    seeds    = _gen_seeds_v2(envelope, branches, cell_count,
+                             inner_zone, voids, seed_rng)
 
     paths: list[Path] = []
-    paths.append(Path(points=list(blob), closed=True, width=stroke_width))
+    paths.append(Path(points=list(envelope), closed=True, width=stroke_width))
     if len(seeds) >= 4:
-        paths.extend(_voronoi_paths(seeds, blob, stroke_width))
-    paths.extend(_gen_fringe(blob, spine_count, spine_length, spine_width, stroke_width,
-                             random.Random(rng.randint(0, 2**31 - 1))))
+        paths.extend(_voronoi_paths(seeds, envelope, stroke_width))
+    paths.extend(_gen_fringe(envelope, spine_count, spine_length,
+                             spine_width, stroke_width, fringe_rng))
     return paths

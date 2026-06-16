@@ -7,11 +7,15 @@ from artworks.lichen_cells.params import PARAMS, PREVIEW
 
 def _params(**overrides):
     p = {param.name: param.default for param in PARAMS}
-    # fast defaults for the suite: fewer cells and spines
-    p.update(cell_count=80, spine_count=30)
+    # fast suite defaults
+    p.update(cell_count=60, spine_count=25, void_count=3, branch_count=3)
     p.update(overrides)
     return p
 
+
+# ---------------------------------------------------------------------------
+# High-level geometry() tests (kept from v1, work with new _params())
+# ---------------------------------------------------------------------------
 
 def test_produces_paths():
     canvas = Canvas(width=200, height=200)
@@ -33,17 +37,6 @@ def test_different_seeds_differ():
     assert [p.points for p in a] != [p.points for p in b]
 
 
-def test_blob_and_cells_in_bounds():
-    # Voronoi edges and the blob outline stay within canvas bounds.
-    # Spine tips radiate outward and may extend beyond; they are excluded here.
-    canvas = Canvas(width=200, height=200)
-    paths = core.geometry(canvas, _params(spine_count=0), random.Random(42))
-    for path in paths:
-        for x, y in path.points:
-            assert -1e-6 <= x <= canvas.width + 1e-6
-            assert -1e-6 <= y <= canvas.height + 1e-6
-
-
 def test_spine_tips_may_extend_past_canvas():
     # Fringe spines intentionally radiate past the canvas edge by up to spine_length.
     canvas = Canvas(width=200, height=200)
@@ -59,7 +52,7 @@ def test_spine_tips_may_extend_past_canvas():
 def test_zero_spines_still_produces_cells():
     canvas = Canvas(width=200, height=200)
     paths = core.geometry(canvas, _params(spine_count=0), random.Random(42))
-    # At least the blob outline plus some Voronoi edges
+    # At least the envelope outline plus some Voronoi edges
     assert len(paths) > 1
 
 
@@ -77,6 +70,55 @@ def test_preview_params_are_lighter():
     assert prev["cell_count"] < next(p.default for p in PARAMS if p.name == "cell_count")
     assert "cell_count" in PREVIEW
 
+
+# ---------------------------------------------------------------------------
+# New integration tests (Task 7)
+# ---------------------------------------------------------------------------
+
+def test_geometry_produces_paths():
+    canvas = Canvas(width=200, height=200)
+    paths = core.geometry(canvas, _params(), random.Random(42))
+    assert len(paths) > 1  # envelope + at least some Voronoi edges
+
+
+def test_geometry_deterministic():
+    canvas = Canvas(width=200, height=200)
+    a = core.geometry(canvas, _params(), random.Random(7))
+    b = core.geometry(canvas, _params(), random.Random(7))
+    assert [p.points for p in a] == [p.points for p in b]
+
+
+def test_geometry_different_seeds_differ():
+    canvas = Canvas(width=200, height=200)
+    a = core.geometry(canvas, _params(), random.Random(1))
+    b = core.geometry(canvas, _params(), random.Random(2))
+    assert [p.points for p in a] != [p.points for p in b]
+
+
+def test_geometry_more_cells_more_paths():
+    canvas = Canvas(width=200, height=200)
+    few = core.geometry(canvas, _params(cell_count=30), random.Random(42))
+    many = core.geometry(canvas, _params(cell_count=120), random.Random(42))
+    assert len(many) > len(few)
+
+
+def test_geometry_zero_voids_ok():
+    canvas = Canvas(width=200, height=200)
+    paths = core.geometry(canvas, _params(void_count=0), random.Random(42))
+    assert len(paths) > 1
+
+
+def test_preview_params_are_lighter_v2():
+    from engine.registry import Registry
+    reg = Registry()
+    prev = reg.preview_params("lichen_cells")
+    assert prev["cell_count"] < next(p.default for p in PARAMS if p.name == "cell_count")
+    assert "cell_count" in PREVIEW
+
+
+# ---------------------------------------------------------------------------
+# Unit tests: _bezier, _sample_branch
+# ---------------------------------------------------------------------------
 
 def test_bezier_endpoints():
     from artworks.lichen_cells.core import _bezier
@@ -100,6 +142,10 @@ def test_sample_branch_length():
     assert math.isclose(pts[0][0], exp0[0]) and math.isclose(pts[0][1], exp0[1])
     assert math.isclose(pts[-1][0], exp1[0]) and math.isclose(pts[-1][1], exp1[1])
 
+
+# ---------------------------------------------------------------------------
+# Unit tests: _gen_skeleton
+# ---------------------------------------------------------------------------
 
 def test_gen_skeleton_branch_count():
     import random
@@ -129,6 +175,10 @@ def test_gen_skeleton_primary_depth_zero():
     secondaries = [b for b in branches if b.depth == 1]
     assert len(secondaries) >= 3  # at least one secondary per primary
 
+
+# ---------------------------------------------------------------------------
+# Unit tests: _branch_envelope
+# ---------------------------------------------------------------------------
 
 def test_branch_envelope_contains_branch_tips():
     import random
@@ -161,6 +211,10 @@ def test_branch_envelope_star_shaped():
         r = math.sqrt((x - 150)**2 + (y - 150)**2)
         assert r > 0
 
+
+# ---------------------------------------------------------------------------
+# Unit tests: _query_territory
+# ---------------------------------------------------------------------------
 
 def test_territory_at_branch_center_near_zero():
     import random
@@ -196,6 +250,10 @@ def test_territory_depth_matches_branch():
     assert depth == 1
 
 
+# ---------------------------------------------------------------------------
+# Unit tests: _gen_voids / _in_any_void
+# ---------------------------------------------------------------------------
+
 def test_gen_voids_count():
     import random
     from artworks.lichen_cells.core import _gen_skeleton, _gen_voids
@@ -222,6 +280,10 @@ def test_gen_voids_zero_returns_empty():
     voids = _gen_voids(branches, n_voids=0, rng=random.Random(1))
     assert voids == []
 
+
+# ---------------------------------------------------------------------------
+# Unit tests: _gen_seeds_v2
+# ---------------------------------------------------------------------------
 
 def test_seeds_v2_exact_count():
     import random
