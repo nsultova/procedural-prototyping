@@ -93,6 +93,31 @@ def _gen_skeleton(cx: float, cy: float, radius: float, n_primary: int,
     return branches
 
 
+def _branch_envelope(branches: list, cx: float, cy: float, n_pts: int = 240) -> list:
+    """Radial-scan union of all branch capsules → star-shaped outline polygon.
+
+    For each angle θ, casts a ray from (cx, cy) and finds how far out any
+    branch point's radius circle extends in that direction.
+    """
+    pts = []
+    for i in range(n_pts):
+        theta = 2 * math.pi * i / n_pts
+        cos_t, sin_t = math.cos(theta), math.sin(theta)
+        r_max = 0.0
+        for branch in branches:
+            for bx, by in branch.pts:
+                dot = (bx - cx) * cos_t + (by - cy) * sin_t
+                if dot <= 0:
+                    continue
+                perp = abs((by - cy) * cos_t - (bx - cx) * sin_t)
+                if perp < branch.radius:
+                    r_ext = dot + math.sqrt(branch.radius**2 - perp**2)
+                    if r_ext > r_max:
+                        r_max = r_ext
+        pts.append((cx + r_max * cos_t, cy + r_max * sin_t))
+    return pts
+
+
 _BLOB_N = 300   # polygon vertex count for the organic blob outline
 
 

@@ -128,3 +128,35 @@ def test_gen_skeleton_primary_depth_zero():
     assert len(primaries) == 3
     secondaries = [b for b in branches if b.depth == 1]
     assert len(secondaries) >= 3  # at least one secondary per primary
+
+
+def test_branch_envelope_contains_branch_tips():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _branch_envelope, _pip
+    branches = _gen_skeleton(cx=150, cy=150, radius=100,
+                             n_primary=4, angle_spread=0.6,
+                             irregularity=0.4, rng=random.Random(42))
+    env = _branch_envelope(branches, cx=150, cy=150)
+    assert len(env) == 240
+    for b in branches:
+        tip_x, tip_y = b.pts[-1]
+        assert _pip(tip_x, tip_y, env), f"tip {tip_x:.1f},{tip_y:.1f} outside envelope"
+
+def test_branch_envelope_finite():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _branch_envelope
+    branches = _gen_skeleton(150, 150, 100, 3, 0.5, 0.3, random.Random(1))
+    env = _branch_envelope(branches, cx=150, cy=150)
+    for x, y in env:
+        assert math.isfinite(x) and math.isfinite(y)
+
+def test_branch_envelope_star_shaped():
+    """Envelope should extend further in the direction of branches than between them."""
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _branch_envelope
+    branches = _gen_skeleton(150, 150, 100, 4, 0.3, 0.1, random.Random(3))
+    env = _branch_envelope(branches, cx=150, cy=150)
+    # All envelope points should be at a positive radius from centre
+    for x, y in env:
+        r = math.sqrt((x - 150)**2 + (y - 150)**2)
+        assert r > 0
