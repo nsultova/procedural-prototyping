@@ -221,3 +221,49 @@ def test_gen_voids_zero_returns_empty():
     branches = _gen_skeleton(150, 150, 100, 3, 0.5, 0.3, random.Random(1))
     voids = _gen_voids(branches, n_voids=0, rng=random.Random(1))
     assert voids == []
+
+
+def test_seeds_v2_exact_count():
+    import random
+    from artworks.lichen_cells.core import _gen_skeleton, _branch_envelope, _gen_seeds_v2
+    branches = _gen_skeleton(150, 150, 100, 4, 0.6, 0.4, random.Random(42))
+    env = _branch_envelope(branches, cx=150, cy=150)
+    seeds = _gen_seeds_v2(env, branches, n_seeds=60, inner_ratio=0.25,
+                          voids=[], rng=random.Random(42))
+    assert len(seeds) == 60
+
+def test_seeds_v2_denser_near_branches():
+    import random
+    from artworks.lichen_cells.core import (
+        _gen_skeleton, _branch_envelope, _gen_seeds_v2, _query_territory
+    )
+    branches = _gen_skeleton(150, 150, 100, 4, 0.6, 0.4, random.Random(42))
+    env = _branch_envelope(branches, cx=150, cy=150)
+    seeds = _gen_seeds_v2(env, branches, n_seeds=200, inner_ratio=0.25,
+                          voids=[], rng=random.Random(42))
+    max_r = max(b.radius for b in branches)
+    inner_count = sum(
+        1 for sx, sy in seeds
+        if _query_territory(sx, sy, branches)[0] < max_r * 0.25
+    )
+    outer_count = sum(
+        1 for sx, sy in seeds
+        if _query_territory(sx, sy, branches)[0] > max_r
+    )
+    assert inner_count > 0
+    assert outer_count < inner_count
+
+def test_seeds_v2_voids_excluded():
+    import random
+    from artworks.lichen_cells.core import (
+        _gen_skeleton, _branch_envelope, _gen_seeds_v2, _in_any_void
+    )
+    branches = _gen_skeleton(150, 150, 100, 3, 0.5, 0.3, random.Random(7))
+    env = _branch_envelope(branches, cx=150, cy=150)
+    # Create a large void covering most of the canvas centre
+    voids = [(150.0, 150.0, 60.0, 60.0, 0.0)]
+    seeds = _gen_seeds_v2(env, branches, n_seeds=50, inner_ratio=0.25,
+                          voids=voids, rng=random.Random(7))
+    # No seed should be inside the void
+    for sx, sy in seeds:
+        assert not _in_any_void(sx, sy, voids)

@@ -190,6 +190,45 @@ def _in_any_void(x: float, y: float, voids: list) -> bool:
     return False
 
 
+def _gen_seeds_v2(envelope: list, branches: list, n_seeds: int,
+                  inner_ratio: float, voids: list, rng) -> list:
+    """Territory-aware Voronoi seed placement.
+
+    Acceptance probability by zone (keyed off max branch territory radius):
+      dist < inner_ratio * max_r  → 1.00  (dense → small/needle cells)
+      dist < max_r                → 0.38  (normal cells)
+      dist ≥ max_r                → 0.10  (large sparse cells)
+    Seeds inside any void ellipse are always rejected.
+    """
+    poly_np = np.array(envelope)
+    min_x, max_x = float(poly_np[:, 0].min()), float(poly_np[:, 0].max())
+    min_y, max_y = float(poly_np[:, 1].min()), float(poly_np[:, 1].max())
+    max_r = max(b.radius for b in branches)
+    r_inner = max_r * inner_ratio
+
+    seeds = []
+    batch = max(n_seeds * 8, 300)
+    while len(seeds) < n_seeds:
+        cxs = np.array([rng.uniform(min_x, max_x) for _ in range(batch)])
+        cys = np.array([rng.uniform(min_y, max_y) for _ in range(batch)])
+        mask = _pip_batch(cxs, cys, poly_np)
+        for x, y in zip(cxs[mask], cys[mask]):
+            if len(seeds) >= n_seeds:
+                break
+            if voids and _in_any_void(x, y, voids):
+                continue
+            dist, _, _ = _query_territory(x, y, branches)
+            if dist < r_inner:
+                accept = 1.00
+            elif dist < max_r:
+                accept = 0.38
+            else:
+                accept = 0.10
+            if rng.random() < accept:
+                seeds.append([x, y])
+    return seeds[:n_seeds]
+
+
 _BLOB_N = 300   # polygon vertex count for the organic blob outline
 
 
