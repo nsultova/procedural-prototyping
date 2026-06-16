@@ -1,3 +1,4 @@
+import math
 import random
 from engine.types import Canvas
 from artworks.lichen_cells import core
@@ -75,3 +76,18 @@ def test_preview_params_are_lighter():
     prev = reg.preview_params("lichen_cells")
     assert prev["cell_count"] < next(p.default for p in PARAMS if p.name == "cell_count")
     assert "cell_count" in PREVIEW
+
+
+def test_bezier_endpoints():
+    from artworks.lichen_cells.core import _bezier
+    p0, p1, p2, p3 = (0,0), (1,0), (1,1), (2,1)
+    assert _bezier(p0, p1, p2, p3, 0.0) == (0.0, 0.0)
+    assert _bezier(p0, p1, p2, p3, 1.0) == (2.0, 1.0)
+
+def test_sample_branch_length():
+    from artworks.lichen_cells.core import _sample_branch
+    pts, tans = _sample_branch((0,0),(1,0),(1,1),(2,1), n=10)
+    assert len(pts) == 10
+    assert len(tans) == 10
+    for tx, ty in tans:
+        assert abs(math.sqrt(tx*tx + ty*ty) - 1.0) < 1e-6

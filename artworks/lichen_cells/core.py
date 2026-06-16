@@ -1,18 +1,51 @@
-"""Lichen Cells — Voronoi cellular network with radiating spine fringe.
+"""Lichen Cells — branching skeleton with zone-differentiated Voronoi cells.
 
-Reverse-engineered from microscopic liverwort cross-sections: the interior is a
-Voronoi tessellation whose seed density increases toward the blob boundary
-(large cells at centre, small cells at edge); the perimeter erupts into fine
-outward-radiating needle spines.
+A Bézier branching skeleton defines territory zones; seed density and character
+vary by distance to the nearest branch axis (needle cells → normal → large/void).
+The perimeter of the branch union erupts into fine outward-radiating spine fringe.
 """
 
 import math
 import random
+from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.spatial import Voronoi
 
 from engine.types import Canvas, Path
+
+
+@dataclass
+class _Branch:
+    pts: list      # list[tuple[float, float]] sampled along Bézier
+    tangents: list # list[tuple[float, float]] unit tangent at each sample
+    radius: float  # territory radius in mm
+    depth: int     # 0 = primary arm, 1 = secondary tip
+
+
+def _bezier(p0, p1, p2, p3, t):
+    u = 1 - t
+    return (
+        u**3*p0[0] + 3*u**2*t*p1[0] + 3*u*t**2*p2[0] + t**3*p3[0],
+        u**3*p0[1] + 3*u**2*t*p1[1] + 3*u*t**2*p2[1] + t**3*p3[1],
+    )
+
+
+def _bezier_tangent(p0, p1, p2, p3, t):
+    u = 1 - t
+    dx = 3*(u**2*(p1[0]-p0[0]) + 2*u*t*(p2[0]-p1[0]) + t**2*(p3[0]-p2[0]))
+    dy = 3*(u**2*(p1[1]-p0[1]) + 2*u*t*(p2[1]-p1[1]) + t**2*(p3[1]-p2[1]))
+    mag = math.sqrt(dx*dx + dy*dy) + 1e-9
+    return dx/mag, dy/mag
+
+
+def _sample_branch(p0, p1, p2, p3, n=24):
+    pts, tans = [], []
+    for i in range(n):
+        t = i / (n - 1)
+        pts.append(_bezier(p0, p1, p2, p3, t))
+        tans.append(_bezier_tangent(p0, p1, p2, p3, t))
+    return pts, tans
 
 
 _BLOB_N = 300   # polygon vertex count for the organic blob outline
