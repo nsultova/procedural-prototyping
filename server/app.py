@@ -71,4 +71,5 @@ def create_app(registry: Registry | None = None) -> Flask:
 
 
 if __name__ == "__main__":
-    create_app().run(debug=True, port=5000)
+    # threaded so a slow render never blocks static files or a newer request
+    create_app().run(debug=True, port=5000, threaded=True)
