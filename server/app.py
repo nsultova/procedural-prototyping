@@ -52,6 +52,10 @@ def create_app(registry: Registry | None = None) -> Flask:
                             height=float(cdata.get("height", 200)))
             params = data.get("params", {})
             want_export = data.get("export", False) is True  # only a real bool
+            want_preview = data.get("preview", False) is True
+            if want_preview and not want_export:
+                # interactive preview: overlay the artwork's lighter PREVIEW values
+                params = {**params, **registry.preview_params(name)}
             t0 = time.perf_counter()
             paths = registry.render_paths(name, params, seed=seed, canvas=canvas)
             if want_export:

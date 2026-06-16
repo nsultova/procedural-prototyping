@@ -30,6 +30,11 @@ def test_merge_ignores_unknown_keys(reg):
     assert "bogus" not in merged
 
 
+def test_preview_params_empty_when_artwork_declares_none(reg):
+    # The fixture artwork has no PREVIEW, so preview renders == full renders.
+    assert reg.preview_params("_fixture_artwork") == {}
+
+
 def test_render_returns_paths(reg):
     canvas = Canvas(width=100, height=100)
     paths = reg.render_paths("_fixture_artwork", {"count": 4}, seed=42, canvas=canvas)

@@ -24,3 +24,9 @@ PARAMS = [
     # Style
     Param("stroke_width",  "Stroke width",   0.1,  1.0,  0.05,  0.35,  group="Style"),
 ]
+
+# Parameter overrides applied only to interactive (preview) renders, never to
+# export. Reducing x_resolution keeps line count/density and overall form intact
+# while cutting per-line sampling ~4x for snappy live feedback; the full-quality
+# render fires once the user stops adjusting.
+PREVIEW = {"x_resolution": 80}
