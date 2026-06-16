@@ -1,17 +1,92 @@
-"""Slime Mould — a branching vein network grown by space colonization.
+"""Slime Mould — a branching vein network grown by space colonization, with
+hatched lobed fronds at the growth frontier and a thin reconnecting (mesh) layer.
 
-Space-colonization growth (Runions et al.): scatter "food" attractor points,
-grow a tree from a root in one corner toward them, consuming food as branches
-reach it. Branch thickness is derived from subtree size (Da Vinci rule), giving
-thick trunk arteries that taper to hair-thin tips, with dense fan-fronts forming
-naturally at the advancing growth edge.
+Three layers, all pure (params + rng -> list[Path], deterministic):
+  1. Veins   — space-colonization tree from a corner root; thickness from
+               subtree size (Da Vinci), thick trunk tapering to fine tips.
+  2. Mesh    — thin links between nearby, non-adjacent nodes, injecting loops
+               -> enclosed cells/holes -> the reticulated organism interior.
+  3. Fronds  — growth tips are clustered into lobes that bulge outward and are
+               filled with a fading spray of short radial strokes: directional
+               hatching that reads as the billowing fuzzy fan-fronts.
 
-Pure: params + rng -> list[Path] (open polylines, each carrying a tapered width).
+All output is open polylines; tone comes from stroke density.
 """
 
 import math
 
 from engine.types import Path, Canvas
+
+
+def _mesh_links(nodes, parents, mesh_dist, mesh_density, width, rng):
+    """Thin links between nearby non-adjacent nodes (loops -> cells)."""
+    links = []
+    cell = max(mesh_dist, 1e-6)
+    grid = {}
+    for i, (x, y) in enumerate(nodes):
+        grid.setdefault((int(x // cell), int(y // cell)), []).append(i)
+    cap = 4000
+    for i, (x, y) in enumerate(nodes):
+        cx, cy = int(x // cell), int(y // cell)
+        for gx in (cx - 1, cx, cx + 1):
+            for gy in (cy - 1, cy, cy + 1):
+                for j in grid.get((gx, gy), ()):
+                    if j <= i or parents[i] == j or parents[j] == i:
+                        continue
+                    nx, ny = nodes[j]
+                    dist = math.hypot(x - nx, y - ny)
+                    if dist > mesh_dist:
+                        continue
+                    if rng.random() >= mesh_density:
+                        continue
+                    # gentle sag so links read as organic cell-walls, not struts
+                    mx, my = (x + nx) * 0.5, (y + ny) * 0.5
+                    sag = (rng.random() - 0.5) * dist * 0.35
+                    px, py = -(ny - y) / (dist or 1.0), (nx - x) / (dist or 1.0)
+                    links.append(Path(points=[(x, y),
+                                              (mx + px * sag, my + py * sag),
+                                              (nx, ny)], width=width))
+                    if len(links) >= cap:
+                        return links
+    return links
+
+
+_FAN_SPREAD = 1.5  # radians; fronds comb outward in a fan, not a 360° starburst
+
+
+def _frond_strokes(cx, cy, base, ux, uy, lobes, n_fill, stroke_len, width, rng, W, H):
+    """A lobe bulging outward (ux,uy), filled with short curved hairs that comb
+    outward — dense soft fur with a fading rim, not a spiky radial burst."""
+    strokes = []
+    da = math.atan2(uy, ux)
+    p1 = rng.random() * 2.0 * math.pi
+    p2 = rng.random() * 2.0 * math.pi
+
+    def radius(th):
+        wav = 1.0 + lobes * (0.6 * math.sin(3 * th + p1) + 0.4 * math.sin(5 * th + p2))
+        bulge = 1.0 + 0.6 * max(0.0, math.cos(th - da))   # swell away from trunk
+        return base * max(0.2, wav) * bulge
+
+    for _ in range(n_fill):
+        # place a hair somewhere in the lobe, biased outward and toward the core
+        th = da + (rng.random() - 0.5) * 2.2          # mostly on the outward side
+        rr = radius(th) * (rng.random() ** 0.7)
+        px = cx + rr * math.cos(th)
+        py = cy + rr * math.sin(th)
+        # the hair itself combs outward (fan direction) with a little curl
+        ang = da + (rng.random() - 0.5) * _FAN_SPREAD
+        L = stroke_len * (0.5 + rng.random())
+        ex, ey = px + math.cos(ang) * L, py + math.sin(ang) * L
+        perp = ang + math.pi / 2
+        curl = (rng.random() - 0.5) * L * 0.5
+        mx = (px + ex) * 0.5 + math.cos(perp) * curl
+        my = (py + ey) * 0.5 + math.sin(perp) * curl
+        strokes.append(Path(points=[
+            (min(max(px, 0.0), W), min(max(py, 0.0), H)),
+            (min(max(mx, 0.0), W), min(max(my, 0.0), H)),
+            (min(max(ex, 0.0), W), min(max(ey, 0.0), H)),
+        ], width=width))
+    return strokes
 
 
 def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
@@ -26,6 +101,13 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     min_w = p["min_width"]
     max_w = p["max_width"]
     w_exp = max(p["width_exponent"], 1e-6)
+    frond_density = p["frond_density"]
+    frond_size = max(p["frond_size"], 1e-6)
+    frond_lobes = p["frond_lobes"]
+    frond_fill = int(p["frond_fill"])
+    frond_stroke = p["frond_stroke"]
+    mesh_density = p["mesh_density"]
+    mesh_dist = p["mesh_dist"]
 
     # Root in the lower-left corner; growth heads toward the top-right frontier.
     root = (0.05 * W, 0.95 * H)
@@ -37,7 +119,7 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
         x = rng.random() * W
         y = rng.random() * H
         if frontier_bias > 0:
-            for _a in range(8):  # rejection-sample toward far-from-root
+            for _a in range(8):
                 dn = math.hypot(x - root[0], y - root[1]) / max_d
                 if rng.random() <= dn ** frontier_bias:
                     break
@@ -48,7 +130,6 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     nodes = [root]
     parents = [-1]
 
-    # spatial hash of node indices (cell = influence radius) for fast nearest()
     cell = max(infl, 1e-6)
     grid = {}
 
@@ -59,7 +140,6 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     grid_add(0)
 
     def nearest_within(x, y):
-        """Nearest node within `infl`; (-1, infl) if none. Uses the 3x3 cells."""
         cx, cy = int(x // cell), int(y // cell)
         best_i, best_d = -1, infl
         for gx in (cx - 1, cx, cx + 1):
@@ -86,15 +166,15 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     for _ in range(max_steps):
         if not active:
             break
-        pulls = {}          # node index -> [sum dx, sum dy] of unit pull dirs
+        pulls = {}
         survivors = []
         for (ax, ay) in active:
             ni, d = nearest_within(ax, ay)
             if ni < 0:
-                survivors.append((ax, ay))   # nothing close enough yet — wait
+                survivors.append((ax, ay))
                 continue
             if d <= kill:
-                continue                     # reached — consume this food
+                continue
             survivors.append((ax, ay))
             nx, ny = nodes[ni]
             inv = 1.0 / d
@@ -113,8 +193,6 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
                     continue
                 grow(ni, dx / mag, dy / mag)
         elif active:
-            # Bootstrap / bridge a gap: nothing is within influence, so extend
-            # the single closest node toward the closest food (capped scan).
             best_d, best_ni, best_a = float("inf"), -1, None
             for (ax, ay) in active[:200]:
                 for i in range(len(nodes)):
@@ -142,15 +220,14 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     total_leaves = max(leaves[0], 1)
 
     def width_of(i):
-        norm = leaves[i] / total_leaves            # 1 at root, small at tips
+        norm = leaves[i] / total_leaves
         w = min_w + (max_w - min_w) * norm ** w_exp
         return max(min_w, min(max_w, w))
 
-    # --- emit continuous strands as polylines (one per branch run) ---
+    # --- veins: continuous strands as polylines ---
     paths: list[Path] = []
     for c in range(1, n):
         par = parents[c]
-        # a strand starts at every child of the root and every child of a fork
         if par != 0 and len(children[par]) == 1:
             continue
         poly = [nodes[par], nodes[c]]
@@ -160,4 +237,40 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
             poly.append(nodes[cur])
         if len(poly) >= 2:
             paths.append(Path(points=poly, width=width_of(c)))
+
+    # --- mesh: thin reconnecting links (loops -> cells) ---
+    if mesh_density > 0 and mesh_dist > 0:
+        paths.extend(_mesh_links(nodes, parents, mesh_dist, mesh_density, min_w, rng))
+
+    # --- fronds: hatched lobed masses at clustered growth tips ---
+    if frond_density > 0 and frond_fill > 0 and n > 1:
+        cells = {}  # grid key -> [count, sum_x, sum_y, sum_dx, sum_dy]
+        for i in range(1, n):
+            if children[i]:
+                continue
+            x, y = nodes[i]
+            px, py = nodes[parents[i]]
+            ddx, ddy = x - px, y - py
+            dl = math.hypot(ddx, ddy) or 1.0
+            key = (int(x // frond_size), int(y // frond_size))
+            acc = cells.get(key)
+            if acc is None:
+                cells[key] = [1, x, y, ddx / dl, ddy / dl]
+            else:
+                acc[0] += 1; acc[1] += x; acc[2] += y
+                acc[3] += ddx / dl; acc[4] += ddy / dl
+        FROND_CAP = 9000
+        for (cnt, sx, sy, sdx, sdy) in cells.values():
+            cx, cy = sx / cnt, sy / cnt
+            dn = math.hypot(cx - root[0], cy - root[1]) / max_d  # outwardness
+            if rng.random() >= frond_density * (0.3 + 0.7 * dn):
+                continue
+            ul = math.hypot(sdx, sdy) or 1.0
+            base = frond_size * (0.7 + 0.5 * min(cnt, 6) / 6.0)
+            paths.extend(_frond_strokes(
+                cx, cy, base, sdx / ul, sdy / ul,
+                frond_lobes, frond_fill, frond_stroke, min_w, rng, W, H))
+            if len(paths) >= FROND_CAP + n:
+                break
+
     return paths
