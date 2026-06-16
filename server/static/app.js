@@ -1,18 +1,43 @@
 const PRESETS = { A4: [210, 297], A3: [297, 420], Square: [200, 200] };
+const LS_KEY = "pp_session";
 const state = {
   artwork: null, spec: null, params: {},
   canvas: { width: 200, height: 200, preset: "Square" },
   view: { scale: 1, x: 0, y: 0 },
 };
 let renderTimer = null;
-let renderSeq = 0;   // guards against a slow render overwriting a newer one
-let loadSeq = 0;     // guards against rapid artwork switches racing
+let rendering = false;   // single-flight: at most one render in flight
+let dirty = false;       // a change arrived while a render was running
+let loadSeq = 0;         // guards against rapid artwork switches racing
 
 const $ = (sel) => document.querySelector(sel);
 
+function saveSession() {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      artwork: state.artwork,
+      seed: +$("#seed").value || 0,
+      canvas: state.canvas,
+      params: state.params,
+    }));
+  } catch (e) { /* storage unavailable (private mode, quota) — non-fatal */ }
+}
+
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)); }
+  catch (e) { return null; }
+}
+
 async function boot() {
-  const artworks = await (await fetch("/api/artworks")).json();
+  let artworks;
+  try {
+    artworks = await (await fetch("/api/artworks")).json();
+  } catch (e) {
+    showError(`Startup failed: ${e.message}`);
+    return;
+  }
   const select = $("#artwork-select");
+  const names = artworks.map((a) => a.name);
   artworks.forEach((a) => {
     const opt = document.createElement("option");
     opt.value = a.name; opt.textContent = a.title;
@@ -20,17 +45,28 @@ async function boot() {
   });
   select.style.display = artworks.length > 1 ? "" : "none";
   select.addEventListener("change", () => loadArtwork(select.value));
-
   wireFooter();
 
   if (!artworks.length) {
     showError("No artworks found. Add one under artworks/ and restart the server.");
     return;
   }
-  await loadArtwork(artworks[0].name);
+
+  // Restore the last session if its artwork still exists; else start fresh.
+  const saved = loadSession();
+  let startName = artworks[0].name;
+  let savedParams = null;
+  if (saved && names.includes(saved.artwork)) {
+    startName = saved.artwork;
+    savedParams = saved.params || null;
+    if (saved.canvas) state.canvas = saved.canvas;
+    if (typeof saved.seed === "number") $("#seed").value = saved.seed;
+  }
+  select.value = startName;
+  await loadArtwork(startName, savedParams);
 }
 
-async function loadArtwork(name) {
+async function loadArtwork(name, savedParams = null) {
   const seq = ++loadSeq;
   state.artwork = name;
   let spec;
@@ -47,6 +83,12 @@ async function loadArtwork(name) {
   $("#subtitle").textContent = spec.subtitle || "";
   state.params = {};
   spec.params.forEach((p) => (state.params[p.name] = p.default));
+  if (savedParams) {
+    // overlay only keys still present in this artwork's spec
+    spec.params.forEach((p) => {
+      if (savedParams[p.name] !== undefined) state.params[p.name] = savedParams[p.name];
+    });
+  }
   buildPanel();
   scheduleRender();
 }
@@ -143,28 +185,38 @@ function buildPayload(extra = {}) {
 
 function scheduleRender() {
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(doRender, 50);
+  renderTimer = setTimeout(kickRender, 120);
+}
+
+function kickRender() {
+  // Single-flight: never have more than one render outstanding. If one is
+  // running, mark dirty and re-render once it finishes (latest wins). This is
+  // what prevents the slider-drag pile-up that froze the UI.
+  if (rendering) { dirty = true; return; }
+  doRender();
 }
 
 async function doRender() {
-  const seq = ++renderSeq;
-  let body;
+  rendering = true;
+  dirty = false;
   try {
     const r = await fetch("/api/render", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(buildPayload()),
     });
-    body = await r.json();
+    const body = await r.json();
     if (!r.ok) throw new Error(body.error || "render failed");
+    hideError();
+    $("#canvas").innerHTML = body.svg;
+    $("#timing").textContent = `${body.ms} ms`;
+    applyView();
+    saveSession();
   } catch (e) {
-    if (seq === renderSeq) showError(e.message);
-    return;
+    showError(e.message);
+  } finally {
+    rendering = false;
+    if (dirty) doRender();  // a change arrived mid-render → render the latest
   }
-  if (seq !== renderSeq) return;  // a newer render superseded this response
-  hideError();
-  $("#canvas").innerHTML = body.svg;
-  $("#timing").textContent = `${body.ms} ms`;
-  applyView();
 }
 
 function showError(msg) { const e = $("#error"); e.hidden = false; e.textContent = msg; }

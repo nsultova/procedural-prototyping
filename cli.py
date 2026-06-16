@@ -46,7 +46,8 @@ def cmd_list(registry: Registry, _args) -> None:
 
 def cmd_serve(_registry: Registry, args) -> None:
     from server.app import create_app
-    create_app().run(debug=True, port=args.port)
+    # threaded so a slow render never blocks static files or a newer request
+    create_app().run(debug=True, port=args.port, threaded=True)
 
 
 def cmd_batch(registry: Registry, args) -> None:
