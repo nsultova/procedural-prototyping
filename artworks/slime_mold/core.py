@@ -1,14 +1,13 @@
-"""Slime Mould — a branching vein network grown by space colonization, with
-hatched lobed fronds at the growth frontier and a thin reconnecting (mesh) layer.
+"""Slime Mould — branching vein network grown by space colonization, with a
+thin reconnecting mesh layer and burst marks at junction nodes.
 
-Three layers, all pure (params + rng -> list[Path], deterministic):
+Two layers, pure (params + rng -> list[Path], deterministic):
   1. Veins   — space-colonization tree from a corner root; thickness from
                subtree size (Da Vinci), thick trunk tapering to fine tips.
-  2. Mesh    — thin links between nearby, non-adjacent nodes, injecting loops
-               -> enclosed cells/holes -> the reticulated organism interior.
-  3. Fronds  — growth tips are clustered into lobes that bulge outward and are
-               filled with a fading spray of short radial strokes: directional
-               hatching that reads as the billowing fuzzy fan-fronts.
+  2. Mesh    — thin links between nearby, non-adjacent nodes -> loops ->
+               enclosed cells/holes -> the reticulated organism interior.
+  3. Bursts  — short radial marks at branch-junction nodes; concentrated
+               tangles that add organic density at the nerve intersections.
 
 All output is open polylines; tone comes from stroke density.
 """
@@ -51,42 +50,40 @@ def _mesh_links(nodes, parents, mesh_dist, mesh_density, width, rng):
     return links
 
 
-_FAN_SPREAD = 1.5  # radians; fronds comb outward in a fan, not a 360° starburst
-
-
-def _frond_strokes(cx, cy, base, ux, uy, lobes, n_fill, stroke_len, width, rng, W, H):
-    """A lobe bulging outward (ux,uy), filled with short curved hairs that comb
-    outward — dense soft fur with a fading rim, not a spiky radial burst."""
-    strokes = []
-    da = math.atan2(uy, ux)
-    p1 = rng.random() * 2.0 * math.pi
-    p2 = rng.random() * 2.0 * math.pi
-
-    def radius(th):
-        wav = 1.0 + lobes * (0.6 * math.sin(3 * th + p1) + 0.4 * math.sin(5 * th + p2))
-        bulge = 1.0 + 0.6 * max(0.0, math.cos(th - da))   # swell away from trunk
-        return base * max(0.2, wav) * bulge
-
-    for _ in range(n_fill):
-        # place a hair somewhere in the lobe, biased outward and toward the core
-        th = da + (rng.random() - 0.5) * 2.2          # mostly on the outward side
-        rr = radius(th) * (rng.random() ** 0.7)
-        px = cx + rr * math.cos(th)
-        py = cy + rr * math.sin(th)
-        # the hair itself combs outward (fan direction) with a little curl
-        ang = da + (rng.random() - 0.5) * _FAN_SPREAD
-        L = stroke_len * (0.5 + rng.random())
-        ex, ey = px + math.cos(ang) * L, py + math.sin(ang) * L
-        perp = ang + math.pi / 2
-        curl = (rng.random() - 0.5) * L * 0.5
-        mx = (px + ex) * 0.5 + math.cos(perp) * curl
-        my = (py + ey) * 0.5 + math.sin(perp) * curl
-        strokes.append(Path(points=[
-            (min(max(px, 0.0), W), min(max(py, 0.0), H)),
-            (min(max(mx, 0.0), W), min(max(my, 0.0), H)),
-            (min(max(ex, 0.0), W), min(max(ey, 0.0), H)),
-        ], width=width))
-    return strokes
+def _junction_bursts(nodes, children, burst_density, burst_strokes, burst_reach,
+                     burst_length, min_w, rng, W, H):
+    """Short radial marks at branch-junction nodes — dense organic tangle at nerve crossings."""
+    paths = []
+    for i, node_children in enumerate(children):
+        degree = len(node_children)
+        if degree < 2:
+            continue
+        if rng.random() >= burst_density:
+            continue
+        x, y = nodes[i]
+        # More strokes for higher-degree junctions
+        n = max(2, int(burst_strokes * (0.5 + 0.7 * rng.random()) * (0.7 + 0.3 * min(degree, 5) / 5.0)))
+        reach = burst_reach * (0.8 + 0.4 * min(degree, 5) / 5.0)
+        for _ in range(n):
+            ang = rng.random() * 2 * math.pi
+            # Stroke starts near the node, extends outward
+            r_start = reach * rng.random() ** 0.5 * 0.4
+            sx = x + math.cos(ang) * r_start
+            sy = y + math.sin(ang) * r_start
+            L = burst_length * (0.4 + 0.8 * rng.random())
+            ex = sx + math.cos(ang) * L
+            ey = sy + math.sin(ang) * L
+            # slight organic curve
+            perp = ang + math.pi / 2
+            curl = (rng.random() - 0.5) * L * 0.45
+            mx = (sx + ex) * 0.5 + math.cos(perp) * curl
+            my = (sy + ey) * 0.5 + math.sin(perp) * curl
+            paths.append(Path(points=[
+                (min(max(sx, 0.0), W), min(max(sy, 0.0), H)),
+                (min(max(mx, 0.0), W), min(max(my, 0.0), H)),
+                (min(max(ex, 0.0), W), min(max(ey, 0.0), H)),
+            ], width=min_w))
+    return paths
 
 
 def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
@@ -101,13 +98,12 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     min_w = p["min_width"]
     max_w = p["max_width"]
     w_exp = max(p["width_exponent"], 1e-6)
-    frond_density = p["frond_density"]
-    frond_size = max(p["frond_size"], 1e-6)
-    frond_lobes = p["frond_lobes"]
-    frond_fill = int(p["frond_fill"])
-    frond_stroke = p["frond_stroke"]
     mesh_density = p["mesh_density"]
     mesh_dist = p["mesh_dist"]
+    burst_density = p["burst_density"]
+    burst_strokes = p["burst_strokes"]
+    burst_reach = p["burst_reach"]
+    burst_length = p["burst_length"]
 
     # Root in the lower-left corner; growth heads toward the top-right frontier.
     root = (0.05 * W, 0.95 * H)
@@ -242,35 +238,10 @@ def geometry(canvas: Canvas, p: dict, rng) -> list[Path]:
     if mesh_density > 0 and mesh_dist > 0:
         paths.extend(_mesh_links(nodes, parents, mesh_dist, mesh_density, min_w, rng))
 
-    # --- fronds: hatched lobed masses at clustered growth tips ---
-    if frond_density > 0 and frond_fill > 0 and n > 1:
-        cells = {}  # grid key -> [count, sum_x, sum_y, sum_dx, sum_dy]
-        for i in range(1, n):
-            if children[i]:
-                continue
-            x, y = nodes[i]
-            px, py = nodes[parents[i]]
-            ddx, ddy = x - px, y - py
-            dl = math.hypot(ddx, ddy) or 1.0
-            key = (int(x // frond_size), int(y // frond_size))
-            acc = cells.get(key)
-            if acc is None:
-                cells[key] = [1, x, y, ddx / dl, ddy / dl]
-            else:
-                acc[0] += 1; acc[1] += x; acc[2] += y
-                acc[3] += ddx / dl; acc[4] += ddy / dl
-        FROND_CAP = 9000
-        for (cnt, sx, sy, sdx, sdy) in cells.values():
-            cx, cy = sx / cnt, sy / cnt
-            dn = math.hypot(cx - root[0], cy - root[1]) / max_d  # outwardness
-            if rng.random() >= frond_density * (0.3 + 0.7 * dn):
-                continue
-            ul = math.hypot(sdx, sdy) or 1.0
-            base = frond_size * (0.7 + 0.5 * min(cnt, 6) / 6.0)
-            paths.extend(_frond_strokes(
-                cx, cy, base, sdx / ul, sdy / ul,
-                frond_lobes, frond_fill, frond_stroke, min_w, rng, W, H))
-            if len(paths) >= FROND_CAP + n:
-                break
+    # --- junction bursts: radial marks at branch nodes ---
+    if burst_density > 0 and burst_strokes > 0:
+        paths.extend(_junction_bursts(
+            nodes, children, burst_density, burst_strokes,
+            burst_reach, burst_length, min_w, rng, W, H))
 
     return paths
