@@ -9,18 +9,34 @@ keeping a Python algorithm and a hand-written HTML reimplementation in sync.
 
 ## Setup
 
+Requires [uv](https://docs.astral.sh/uv/). Install it once:
+
 ```bash
-python -m venv .venv
-.venv/bin/pip install -r requirements.txt
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-## Use
+Then install dependencies (uv creates the virtualenv automatically):
 
 ```bash
-.venv/bin/python cli.py serve        # open http://localhost:5000 and explore
-.venv/bin/python cli.py list         # list available artworks
-.venv/bin/python cli.py batch geological --count 8        # random SVGs -> output/drafts
-.venv/bin/python cli.py reproduce output/keepers/foo.svg  # regenerate from an SVG's metadata
+uv sync
+```
+
+## Run
+
+```bash
+uv run python cli.py serve           # start server; open http://localhost:5000
+```
+
+```bash
+uv run python cli.py list            # list all artworks
+uv run python cli.py batch geological --count 8 --width 200 --height 200
+                                     # generate 8 random SVGs -> output/drafts/
+uv run python cli.py reproduce output/keepers/foo.svg
+                                     # regenerate an SVG exactly from its embedded metadata
+```
+
+```bash
+uv run pytest                        # run the test suite
 ```
 
 In the browser: pick an artwork from the dropdown, drag sliders to explore
@@ -47,15 +63,9 @@ single-point dot — which together cover all pen-plotter output.
 
 ```
 engine/      types.py (Path/Canvas/Param), render.py (paths -> SVG), registry.py
-artworks/    geological/, water_droplets/   (each: core.py + params.py)
+artworks/    geological/, water_droplets/, slime_mold/, lichen_cells/   (each: core.py + params.py)
 server/      app.py (Flask) + static/ (the one generic UI shell)
 cli.py       serve / list / batch / reproduce
 output/      drafts/ + keepers/
 tests/
-```
-
-## Test
-
-```bash
-.venv/bin/pytest
 ```
